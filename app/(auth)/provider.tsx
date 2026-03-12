@@ -3,13 +3,15 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { UserDetailContext } from "@/context/UserDetailContext";
 import Header from "../_components/Header";
+import { usePathname } from "next/navigation";
 
 const Provider = ({ children }: { children: React.ReactNode }) => {
   const [userDetail, setUserDetail] = useState(null);
+  const pathname = usePathname();
 
   useEffect(() => {
     fetchCurrentUser();
-  }, []);
+  }, [pathname]);
 
   // JWT auth: fetch user from JWT cookie via /api/auth/me
   // Previously called POST /api/user using Clerk's currentUser()

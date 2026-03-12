@@ -6,7 +6,7 @@
 
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import axios from "axios";
 import { AxiosError } from "axios";
 import { toast } from "sonner";
@@ -14,6 +14,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
+import { useContext } from "react";
+import { UserDetailContext } from "@/context/UserDetailContext";
 
 export default function SignUpPage() {
   const [name, setName] = useState("");
@@ -21,14 +23,25 @@ export default function SignUpPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { setUserDetail } = useContext(UserDetailContext);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await axios.post("/api/auth/register", { name, email, password });
+      const result = await axios.post("/api/auth/register", {
+        name,
+        email,
+        password,
+      });
+      setUserDetail(result.data);
+
+      const redirect = searchParams.get("redirect");
+      const redirectPath = redirect?.startsWith("/") ? redirect : "/";
+
       toast.success("Account created successfully!");
-      router.push("/");
+      router.push(redirectPath);
       router.refresh();
     } catch (error: unknown) {
       const message =
