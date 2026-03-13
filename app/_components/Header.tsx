@@ -16,7 +16,13 @@ const Header = () => {
   const router = useRouter();
 
   const handleLogout = async () => {
-    await axios.post("/api/auth/logout");
+    await axios.post(
+      "/api/auth/logout",
+      {},
+      {
+        withCredentials: true,
+      },
+    );
     setUserDetail(null);
     router.push("/sign-in");
     router.refresh();

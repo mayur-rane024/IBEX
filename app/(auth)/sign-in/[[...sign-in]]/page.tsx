@@ -29,8 +29,18 @@ export default function SignInPage() {
     e.preventDefault();
     setLoading(true);
     try {
-      const result = await axios.post("/api/auth/login", { email, password });
-      setUserDetail(result.data);
+      await axios.post(
+        "/api/auth/login",
+        { email, password },
+        {
+          withCredentials: true,
+        },
+      );
+
+      const me = await axios.get("/api/auth/me", {
+        withCredentials: true,
+      });
+      setUserDetail(me.data);
 
       const redirect = searchParams.get("redirect");
       const redirectPath = redirect?.startsWith("/") ? redirect : "/";

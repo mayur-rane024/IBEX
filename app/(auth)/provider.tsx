@@ -17,7 +17,9 @@ const Provider = ({ children }: { children: React.ReactNode }) => {
   // Previously called POST /api/user using Clerk's currentUser()
   const fetchCurrentUser = async () => {
     try {
-      const result = await axios.get("/api/auth/me");
+      const result = await axios.get("/api/auth/me", {
+        withCredentials: true,
+      });
       setUserDetail(result.data);
     } catch {
       // Not authenticated — user stays null
