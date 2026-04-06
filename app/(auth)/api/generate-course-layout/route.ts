@@ -6,7 +6,7 @@ import { isDatabaseConnectionError, saveLocalCourse } from "@/lib/dbFallback";
 // Clerk's currentUser commented out — replaced with JWT getCurrentUser()
 // import { currentUser } from "@clerk/nextjs/server";
 import { getCurrentUser } from "@/lib/auth";
-import { getGeminiModel } from "@/lib/gemini";
+import { getGenerationModel, normalizeAiProvider } from "@/lib/ai-provider";
 
 type CourseChapter = {
   chapterId: string;
@@ -21,6 +21,7 @@ type CourseLayout = {
   level: "Beginner" | "Intermediate" | "Advanced";
   totalChapters: number;
   chapters: CourseChapter[];
+  aiProvider?: "global-ai" | "local-ai";
 };
 
 type ApiErrorLike = {
@@ -165,7 +166,7 @@ const getErrorStatus = (error: unknown) => {
 
 export async function POST(req: NextRequest) {
   try {
-    const { userInput, courseId, type } = await req.json();
+    const { userInput, courseId, type, aiProvider } = await req.json();
     let userEmail = "";
 
     try {
@@ -185,7 +186,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const model = getGeminiModel({ temperature: 0.2 });
+    const resolvedAiProvider = normalizeAiProvider(aiProvider);
+    const model = getGenerationModel({
+      provider: resolvedAiProvider,
+      temperature: 0.2,
+    });
 
     const response = await model.generateContent(
       `${Course_config_prompt}\n\nCourse Topic is ${userInput}`,
@@ -206,6 +211,10 @@ export async function POST(req: NextRequest) {
     }
 
     const JSONResult = sanitizeCourseLayout(parsedResult, userInput, courseId);
+    const courseLayout = {
+      ...JSONResult,
+      aiProvider: resolvedAiProvider,
+    };
 
     try {
       const courseResult = await db
@@ -215,7 +224,7 @@ export async function POST(req: NextRequest) {
           courseName: JSONResult.courseName,
           userInput,
           type,
-          courseLayout: JSONResult,
+          courseLayout,
           userId: userEmail,
         })
         .returning();
@@ -235,7 +244,7 @@ export async function POST(req: NextRequest) {
         courseName: JSONResult.courseName,
         userInput,
         type,
-        courseLayout: JSONResult,
+        courseLayout,
         userId: userEmail,
       });
 

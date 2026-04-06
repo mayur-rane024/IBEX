@@ -30,6 +30,7 @@ import { v4 as uuidv4 } from "uuid";
 const Hero = () => {
   const [userInput, setUserInput] = useState("");
   const [type, setType] = useState("full-course");
+  const [aiProvider, setAiProvider] = useState("global-ai");
   const [loading, setLoading] = useState(false);
   // JWT auth: read user from context instead of Clerk's useUser()
   const { userDetail } = useContext(UserDetailContext);
@@ -50,6 +51,7 @@ const Hero = () => {
       const result = await axios.post("/api/generate-course-layout", {
         userInput,
         type,
+        aiProvider,
         courseId: courseId,
       });
       console.log(result.data);
@@ -102,6 +104,20 @@ const Hero = () => {
                     <SelectItem value="full-course">Full Course</SelectItem>
                     <SelectItem value="quick-explain-video">
                       Quick Explain Video
+                    </SelectItem>
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+              <Select value={aiProvider} onValueChange={setAiProvider}>
+                <SelectTrigger className="">
+                  <SelectValue placeholder="Global AI" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>AI Backend</SelectLabel>
+                    <SelectItem value="global-ai">Global AI</SelectItem>
+                    <SelectItem value="local-ai">
+                      Local AI (Ollama)
                     </SelectItem>
                   </SelectGroup>
                 </SelectContent>

@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import axios from "axios";
 import { db } from "@/config/db";
-import { chapterContentSlides } from "@/config/schema";
-import { getGeminiModel } from "@/lib/gemini";
-import { isDatabaseConnectionError, saveLocalSlides } from "@/lib/dbFallback";
+import { chapterContentSlides, coursesTable } from "@/config/schema";
+import { getGenerationModel, normalizeAiProvider } from "@/lib/ai-provider";
+import {
+  getLocalCourse,
+  isDatabaseConnectionError,
+  saveLocalSlides,
+} from "@/lib/dbFallback";
 import { Generate_Video_Content_Prompt } from "@/data/Prompt";
 import { saveAudio } from "@/lib/audioStorage";
+import { eq } from "drizzle-orm";
 
 type GeneratedSlide = {
   slideIndex: number;
@@ -78,7 +83,47 @@ const splitTextIntoChunks = (text: string, maxLength: number) => {
 export async function POST(req: NextRequest) {
   const { chapter, chapterId, courseId } = await req.json();
 
-  const model = getGeminiModel({ temperature: 0.3 });
+  if (!courseId) {
+    return NextResponse.json(
+      { error: "courseId is required" },
+      { status: 400 },
+    );
+  }
+
+  let aiProvider = "global-ai";
+
+  try {
+    const courses = await db
+      .select()
+      .from(coursesTable)
+      .where(eq(coursesTable.courseId, courseId));
+
+    const course = courses[0];
+
+    if (course) {
+      aiProvider = normalizeAiProvider(
+        (course.courseLayout as { aiProvider?: string } | null)?.aiProvider,
+      );
+    }
+  } catch (error) {
+    if (!isDatabaseConnectionError(error)) {
+      throw error;
+    }
+
+    const localCourse = await getLocalCourse(courseId);
+
+    if (localCourse) {
+      aiProvider = normalizeAiProvider(
+        (localCourse.courseLayout as { aiProvider?: string } | null)
+          ?.aiProvider,
+      );
+    }
+  }
+
+  const model = getGenerationModel({
+    provider: aiProvider,
+    temperature: 0.3,
+  });
 
   const response = await model.generateContent(
     Generate_Video_Content_Prompt +
