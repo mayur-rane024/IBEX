@@ -82,7 +82,7 @@ function CourseChatPanel({ course }: Props) {
   return (
     <>
       <Button
-        className="fixed bottom-6 right-6 z-40 rounded-full shadow-2xl px-4 py-6 gap-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400"
+        className="fixed bottom-6 right-6 z-40 rounded-full shadow-2xl px-4 py-6 gap-2 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400"
         onClick={() => setOpen(true)}
       >
         <MessageSquarePlus size={18} />
@@ -120,7 +120,9 @@ function CourseChatPanel({ course }: Props) {
                           : "bg-white/5 text-slate-100 border border-white/10"
                       }`}
                     >
-                      {message.content}
+                      <p className="whitespace-pre-wrap wrap-break-word leading-6">
+                        {message.content}
+                      </p>
                     </div>
                   </div>
                 ))}

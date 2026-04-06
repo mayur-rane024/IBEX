@@ -5,8 +5,10 @@ import { chapterContentSlides } from "@/config/schema";
 import { getGenerationModel } from "@/lib/ai-provider";
 import { isDatabaseConnectionError, saveLocalSlides } from "@/lib/dbFallback";
 import {
+  buildTopicContextFromMatches,
   getCourseSnapshotByCourseId,
   indexCourseRagSource,
+  queryCourseRag,
 } from "@/lib/course-rag";
 import { getKimiSlideModel, hasKimiApiKey } from "@/lib/kimi";
 import { Generate_Video_Content_Prompt } from "@/data/Prompt";
@@ -90,10 +92,30 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const slidePrompt =
+  let slidePrompt =
     Generate_Video_Content_Prompt +
     "Chapter Detail Is " +
     JSON.stringify(chapter);
+
+  try {
+    const snapshot = await getCourseSnapshotByCourseId(courseId);
+    const topicName =
+      snapshot?.topicName || snapshot?.courseName || chapter?.chapterTitle || "course";
+
+    const ragResult = await queryCourseRag({
+      topicName,
+      question: JSON.stringify(chapter),
+      topK: 6,
+    });
+
+    const retrievalContext = buildTopicContextFromMatches(ragResult.matches);
+
+    if (retrievalContext) {
+      slidePrompt += `\n\nUse this prior topic context to improve slide quality and continuity:\n${retrievalContext}`;
+    }
+  } catch (ragError) {
+    console.warn("Slide generation RAG enrichment skipped:", ragError);
+  }
 
   let response;
 

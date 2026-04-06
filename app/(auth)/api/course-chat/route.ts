@@ -44,6 +44,13 @@ export async function POST(req: NextRequest) {
 Answer using only the course context below.
 If the context is not enough, say you do not have enough course information.
 Keep the answer concise, practical, and friendly.
+  Format your response exactly like this:
+  Summary: <1-2 lines>
+  Key Points:
+  - <point 1>
+  - <point 2>
+  - <point 3 if needed>
+  Next Step: <single actionable suggestion>
 
 COURSE CONTEXT:
 ${contextBlock}

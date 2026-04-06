@@ -58,6 +58,8 @@ type PineconeMatch = {
 
 const PINECONE_API_KEY = process.env.PINECONE_API_KEY || "";
 const PINECONE_INDEX_HOST = process.env.PINECONE_INDEX_HOST || "";
+const PINECONE_NAMESPACE_PREFIX =
+  process.env.PINECONE_NAMESPACE_PREFIX || "course";
 const OLLAMA_BASE_URL =
   process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434";
 const OLLAMA_EMBED_MODEL = process.env.OLLAMA_EMBED_MODEL || "nomic-embed-text";
@@ -82,6 +84,12 @@ const slugify = (value: string) =>
 
 export const topicNamespace = (value: string) => slugify(value) || "course";
 
+export const courseTopicNamespace = (value: string) => {
+  const topic = topicNamespace(value);
+  const prefix = slugify(PINECONE_NAMESPACE_PREFIX) || "course";
+  return `${prefix}-${topic}`;
+};
+
 const stripHtml = (value: string) =>
   value
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -92,6 +100,22 @@ const stripHtml = (value: string) =>
 
 const safeString = (value: unknown) =>
   typeof value === "string" ? value.trim() : "";
+
+const chunkText = (text: string, maxLength = 1000) => {
+  const normalized = text.replace(/\s+/g, " ").trim();
+
+  if (!normalized) {
+    return [] as string[];
+  }
+
+  const chunks: string[] = [];
+
+  for (let cursor = 0; cursor < normalized.length; cursor += maxLength) {
+    chunks.push(normalized.slice(cursor, cursor + maxLength));
+  }
+
+  return chunks;
+};
 
 const embedText = async (text: string) => {
   const response = await axios.post(
@@ -281,7 +305,7 @@ export const indexCourseRagSource = async (input: CourseRagSource) => {
     };
   }
 
-  const namespace = topicNamespace(
+  const namespace = courseTopicNamespace(
     input.topicName || input.courseName || input.userInput || input.courseId,
   );
 
@@ -378,12 +402,12 @@ export const queryCourseRag = async ({
   if (!hasPineconeConfig()) {
     return {
       matches: [] as PineconeMatch[],
-      namespace: topicNamespace(topicName),
+      namespace: courseTopicNamespace(topicName),
       pineconeAvailable: false,
     };
   }
 
-  const namespace = topicNamespace(topicName);
+  const namespace = courseTopicNamespace(topicName);
   const vector = await embedText(question);
   const response = await pineconeRequest<{
     matches?: PineconeMatch[];
@@ -400,6 +424,126 @@ export const queryCourseRag = async ({
     pineconeAvailable: true,
   };
 };
+
+export const indexTopicRecords = async ({
+  topicName,
+  sourceId,
+  records,
+  metadata,
+}: {
+  topicName: string;
+  sourceId: string;
+  records: string[];
+  metadata?: Record<string, string | number | boolean>;
+}) => {
+  if (!hasPineconeConfig()) {
+    return {
+      indexed: false,
+      reason: "Pinecone is not configured",
+    };
+  }
+
+  const namespace = courseTopicNamespace(topicName);
+
+  const flattened = records.flatMap((record) => chunkText(record));
+
+  if (flattened.length === 0) {
+    return {
+      indexed: false,
+      reason: "No text records to index",
+    };
+  }
+
+  const vectors: PineconeVector[] = [];
+
+  for (let index = 0; index < flattened.length; index++) {
+    const text = flattened[index];
+    const values = await embedText(text);
+    vectors.push({
+      id: `${sourceId}:${index}`,
+      values,
+      metadata: {
+        ...(metadata || {}),
+        topicName,
+        sourceId,
+        kind: "external-record",
+        chunkIndex: index,
+        text,
+      },
+    });
+  }
+
+  await pineconeRequest("/vectors/upsert", {
+    namespace,
+    vectors,
+  });
+
+  return {
+    indexed: true,
+    namespace,
+    documentCount: vectors.length,
+  };
+};
+
+export const queryTopicRecords = async ({
+  topicName,
+  question,
+  topK = 8,
+}: {
+  topicName: string;
+  question: string;
+  topK?: number;
+}) => {
+  if (!hasPineconeConfig()) {
+    return {
+      matches: [] as PineconeMatch[],
+      namespace: courseTopicNamespace(topicName),
+      pineconeAvailable: false,
+    };
+  }
+
+  const namespace = courseTopicNamespace(topicName);
+  const vector = await embedText(question);
+
+  const response = await pineconeRequest<{
+    matches?: PineconeMatch[];
+  }>("/query", {
+    namespace,
+    vector,
+    topK,
+    includeMetadata: true,
+  });
+
+  return {
+    matches: response.matches || [],
+    namespace,
+    pineconeAvailable: true,
+  };
+};
+
+export const buildTopicContextFromMatches = (matches: PineconeMatch[]) =>
+  matches
+    .map((match, index) => {
+      const metadata = match.metadata || {};
+      const text = safeString(metadata.text);
+
+      if (!text) {
+        return "";
+      }
+
+      return [
+        `Reference ${index + 1}`,
+        safeString(metadata.kind) ? `Kind: ${safeString(metadata.kind)}` : "",
+        safeString(metadata.courseName)
+          ? `Course: ${safeString(metadata.courseName)}`
+          : "",
+        text,
+      ]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .filter(Boolean)
+    .join("\n\n");
 
 export const buildCourseContextBlock = (
   snapshot: CourseSnapshot,
