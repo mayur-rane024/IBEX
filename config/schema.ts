@@ -7,7 +7,7 @@ import {
   text,
   timestamp,
   uuid,
-  uniqueIndex,
+  unique,
   varchar,
 } from "drizzle-orm/pg-core";
 
@@ -131,7 +131,7 @@ export const forumRepliesTable = pgTable(
     createdAt: timestamp().defaultNow().notNull(),
   },
   (table) => ({
-    idThreadUniqueIdx: uniqueIndex("forum_replies_id_thread_id_idx").on(
+    idThreadUnique: unique("forum_replies_id_thread_id_unique").on(
       table.id,
       table.threadId,
     ),
