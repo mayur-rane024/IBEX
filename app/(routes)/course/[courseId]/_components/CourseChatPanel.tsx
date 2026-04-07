@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { Bot, Loader2, MessageSquarePlus, Send, Sparkles } from "lucide-react";
 
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import { Course } from "@/type/CourseType";
 
 type Message = {
@@ -19,6 +19,9 @@ type Props = {
   course: Course;
 };
 
+const initialMessage =
+  "Ask me anything about this course. I'll answer using the course notes and saved topic context.";
+
 function CourseChatPanel({ course }: Props) {
   const [open, setOpen] = useState(false);
   const [question, setQuestion] = useState("");
@@ -27,25 +30,23 @@ function CourseChatPanel({ course }: Props) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
-      content:
-        "Ask me anything about this course. I'll answer using the course notes and previous saved topic records.",
+      content: initialMessage,
     },
   ]);
 
   const endRef = useRef<HTMLDivElement | null>(null);
 
   const topicLabel = useMemo(
-    () => course?.courseLayout?.courseName || course?.courseName || "this course",
+    () => course.courseLayout?.courseName || course.courseName || "this course",
     [course],
   );
 
-  // Load chat history when conversation ID changes
   const loadChatHistory = async (convId: string) => {
     try {
       const response = await axios.get("/api/course-chat", {
         params: { conversationId: convId },
       });
-      
+
       if (response.data.messages && response.data.messages.length > 0) {
         setMessages(response.data.messages);
       }
@@ -54,12 +55,11 @@ function CourseChatPanel({ course }: Props) {
     }
   };
 
-  // Load chat history when panel opens with existing conversation
   useEffect(() => {
     if (open && conversationId) {
-      loadChatHistory(conversationId);
+      void loadChatHistory(conversationId);
     }
-  }, [open, conversationId]);
+  }, [conversationId, open]);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -68,7 +68,9 @@ function CourseChatPanel({ course }: Props) {
   const sendQuestion = async () => {
     const trimmed = question.trim();
 
-    if (!trimmed || loading) return;
+    if (!trimmed || loading) {
+      return;
+    }
 
     setQuestion("");
     setMessages((prev) => [...prev, { role: "user", content: trimmed }]);
@@ -81,7 +83,6 @@ function CourseChatPanel({ course }: Props) {
         conversationId: conversationId || undefined,
       });
 
-      // Set conversation ID if it's a new conversation
       if (!conversationId && response.data.conversationId) {
         setConversationId(response.data.conversationId);
       }
@@ -114,8 +115,7 @@ function CourseChatPanel({ course }: Props) {
     setMessages([
       {
         role: "assistant",
-        content:
-          "Ask me anything about this course. I'll answer using the course notes and previous saved topic records.",
+        content: initialMessage,
       },
     ]);
   };
@@ -123,37 +123,37 @@ function CourseChatPanel({ course }: Props) {
   return (
     <>
       <Button
-        className="fixed bottom-6 right-6 z-40 rounded-full shadow-2xl px-4 py-6 gap-2 bg-linear-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400"
+        className="fixed bottom-6 right-6 z-40 gap-2 rounded-full px-5 py-6"
         onClick={() => setOpen(true)}
       >
         <MessageSquarePlus size={18} />
-        Ask Course Bot
+        Ask course bot
       </Button>
 
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           side="right"
-          className="w-full sm:max-w-lg border-slate-800 bg-slate-950 text-slate-50 p-0"
+          className="w-full border-border bg-background p-0 sm:max-w-lg"
         >
-          <SheetHeader className="border-b border-white/10 p-5 pr-12 bg-slate-950/95 backdrop-blur">
-            <SheetTitle className="flex items-center gap-2 text-xl text-white">
-              <Bot className="text-emerald-400" size={20} />
-              Course Chat
+          <SheetHeader className="border-b border-border bg-white px-5 py-5 pr-12">
+            <SheetTitle className="flex items-center gap-2 text-xl text-slate-950">
+              <Bot className="text-indigo-500" size={20} />
+              Course chat
             </SheetTitle>
-            <SheetDescription className="text-slate-400">
-              Ask questions about <span className="text-slate-200">{topicLabel}</span>.
-              Powered by local Ollama plus Pinecone topic memory.
+            <SheetDescription className="text-slate-500">
+              Ask questions about <span className="text-slate-700">{topicLabel}</span>.
+              Answers stay grounded in the course notes.
             </SheetDescription>
-            {conversationId && (
+            {conversationId ? (
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={startNewConversation}
-                className="text-xs text-slate-400 hover:text-slate-200 mt-2"
+                className="mt-2 w-fit text-xs"
               >
-                + New Conversation
+                New conversation
               </Button>
-            )}
+            ) : null}
           </SheetHeader>
 
           <div className="flex h-[calc(100vh-84px)] flex-col">
@@ -162,49 +162,53 @@ function CourseChatPanel({ course }: Props) {
                 {messages.map((message, index) => (
                   <div
                     key={`${message.role}-${index}`}
-                    className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                    className={`flex ${
+                      message.role === "user" ? "justify-end" : "justify-start"
+                    }`}
                   >
                     <div
-                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${
+                      className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
                         message.role === "user"
-                          ? "bg-emerald-500 text-white"
-                          : "bg-white/5 text-slate-100 border border-white/10"
+                          ? "bg-indigo-600 text-white"
+                          : "border border-border bg-white text-slate-700"
                       }`}
                     >
-                      <p className="whitespace-pre-wrap wrap-break-word leading-6">
+                      <p className="whitespace-pre-wrap break-words leading-6">
                         {message.content}
                       </p>
                     </div>
                   </div>
                 ))}
-                {loading && (
+
+                {loading ? (
                   <div className="flex justify-start">
-                    <div className="inline-flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-200">
-                      <Loader2 className="animate-spin" size={16} />
-                      Thinking with the course notes...
+                    <div className="inline-flex items-center gap-2 rounded-2xl border border-border bg-white px-4 py-3 text-sm text-slate-600">
+                      <Loader2 className="size-4 animate-spin text-indigo-500" />
+                      Thinking through the course notes...
                     </div>
                   </div>
-                )}
+                ) : null}
+
                 <div ref={endRef} />
               </div>
             </ScrollArea>
 
-            <div className="border-t border-white/10 bg-slate-950 p-4">
+            <div className="border-t border-border bg-white p-4">
               <div className="mb-3 flex flex-wrap gap-2">
-                {course?.courseLayout?.chapters?.slice(0, 3).map((chapter) => (
+                {course.courseLayout?.chapters?.slice(0, 3).map((chapter) => (
                   <button
                     key={chapter.chapterId}
                     type="button"
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs text-slate-300 hover:bg-white/10"
+                    className="rounded-full border border-border bg-slate-50 px-3 py-1 text-xs text-slate-600 transition-colors hover:border-indigo-200 hover:bg-indigo-50 hover:text-indigo-700"
                     onClick={() =>
                       setQuestion((current) =>
                         current
                           ? current
-                          : `Explain ${chapter.chapterTitle} in simple terms.`
+                          : `Explain ${chapter.chapterTitle} in simple terms.`,
                       )
                     }
                   >
-                    <Sparkles size={12} className="inline-block mr-1" />
+                    <Sparkles size={12} className="mr-1 inline-block" />
                     {chapter.chapterTitle}
                   </button>
                 ))}
@@ -213,12 +217,12 @@ function CourseChatPanel({ course }: Props) {
               <div className="space-y-3">
                 <Textarea
                   value={question}
-                  onChange={(e) => setQuestion(e.target.value)}
+                  onChange={(event) => setQuestion(event.target.value)}
                   placeholder="Ask about concepts, chapters, examples, or next steps..."
-                  className="min-h-28 resize-none border-white/10 bg-white/5 text-white placeholder:text-slate-500 focus-visible:ring-emerald-500/40"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
+                  className="min-h-28 resize-none"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
                       void sendQuestion();
                     }
                   }}
@@ -230,10 +234,10 @@ function CourseChatPanel({ course }: Props) {
                   <Button
                     onClick={() => void sendQuestion()}
                     disabled={loading || !question.trim()}
-                    className="gap-2 bg-emerald-500 text-white hover:bg-emerald-400"
+                    className="gap-2"
                   >
                     {loading ? (
-                      <Loader2 className="animate-spin" size={16} />
+                      <Loader2 className="size-4 animate-spin" />
                     ) : (
                       <Send size={16} />
                     )}

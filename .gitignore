@@ -46,3 +46,6 @@ public/audio/*
 
 # Local fallback storage for offline DB development
 .local-data/
+
+# clerk configuration (can include secrets)
+/.clerk/

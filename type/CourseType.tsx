@@ -3,7 +3,7 @@ export type Course = {
   courseName: string;
   type: string;
   createdAt: string;
-  id: number;
+  id: string;
   courseLayout: courseLayout;
   chapterContentSlides: ChapterContentSlide[];
 };

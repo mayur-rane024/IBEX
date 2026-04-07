@@ -1,12 +1,11 @@
 "use client";
 
-import React, { useContext, useEffect, useState } from "react";
+import { useAuth } from "@clerk/nextjs";
 import axios from "axios";
+import { BookOpen, Clock, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-// Clerk's useUser commented out — replaced with JWT auth via UserDetailContext
-// import { useUser } from "@clerk/nextjs";
-import { UserDetailContext } from "@/context/UserDetailContext";
-import { Loader2, BookOpen, Clock } from "lucide-react";
+import React, { useEffect, useState } from "react";
+
 import {
   Card,
   CardContent,
@@ -16,7 +15,7 @@ import {
 } from "@/components/ui/card";
 
 type Course = {
-  id: number;
+  id: string;
   courseId: string;
   courseName: string;
   userInput: string;
@@ -28,18 +27,20 @@ type Course = {
 function CourseList() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
+  const { isLoaded, userId } = useAuth();
   const router = useRouter();
-  // JWT auth: read user from context instead of Clerk's useUser()
-  const { userDetail } = useContext(UserDetailContext);
 
   useEffect(() => {
-    if (!userDetail) return;
+    if (!isLoaded) return;
+    if (!userId) {
+      setLoading(false);
+      setCourses([]);
+      return;
+    }
 
     const fetchCourses = async () => {
       try {
-        const response = await axios.get("/api/courses", {
-          withCredentials: true,
-        });
+        const response = await axios.get("/api/courses");
         setCourses(response.data.courses || []);
       } catch (error) {
         console.error("Error fetching courses:", error);
@@ -48,10 +49,10 @@ function CourseList() {
       }
     };
 
-    fetchCourses();
-  }, [userDetail]);
+    void fetchCourses();
+  }, [isLoaded, userId]);
 
-  if (!userDetail) {
+  if (!userId) {
     return null;
   }
 
@@ -95,16 +96,12 @@ function CourseList() {
         {courses.map((course) => (
           <div
             key={course.courseId}
-            onClick={() => {
-              if (course.courseId) {
-                router.push(`/course/${course.courseId}`);
-              }
-            }}
+            onClick={() => router.push(`/course/${course.courseId}`)}
             style={{ cursor: "pointer", pointerEvents: "auto" }}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
-              if ((e.key === "Enter" || e.key === " ") && course.courseId) {
+              if (e.key === "Enter" || e.key === " ") {
                 router.push(`/course/${course.courseId}`);
               }
             }}
