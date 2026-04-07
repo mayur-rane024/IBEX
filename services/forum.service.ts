@@ -85,6 +85,11 @@ export type ForumReplyView = {
   replies: ForumReplyView[];
 };
 
+export type ForumComposerAccess = {
+  canCreateThread: boolean;
+  message: string | null;
+};
+
 const defaultStore: ForumStore = {
   async countThreads() {
     const { db } = await import("@/config/db");
@@ -460,3 +465,44 @@ export const getReplies = forumService.getReplies;
 export const getThreadById = forumService.getThreadById;
 export const getThreads = forumService.getThreads;
 export const createReply = forumService.createReply;
+
+export const getForumComposerAccess = async (
+  userId: string,
+): Promise<ForumComposerAccess> => {
+  const { db } = await import("@/config/db");
+  const { coursesTable, forumRepliesTable, forumThreadsTable } = await import(
+    "@/config/schema"
+  );
+
+  const [{ count: coursesCount }] = await db
+    .select({
+      count: sql<number>`count(*)`.mapWith(Number),
+    })
+    .from(coursesTable)
+    .where(eq(coursesTable.userId, userId));
+
+  const [{ count: threadsCount }] = await db
+    .select({
+      count: sql<number>`count(*)`.mapWith(Number),
+    })
+    .from(forumThreadsTable)
+    .where(eq(forumThreadsTable.userId, userId));
+
+  const [{ count: repliesCount }] = await db
+    .select({
+      count: sql<number>`count(*)`.mapWith(Number),
+    })
+    .from(forumRepliesTable)
+    .where(eq(forumRepliesTable.userId, userId));
+
+  const activityCount =
+    (coursesCount ?? 0) + (threadsCount ?? 0) + (repliesCount ?? 0);
+
+  return {
+    canCreateThread: activityCount > 0,
+    message:
+      activityCount > 0
+        ? null
+        : "You need more activity to start a thread",
+  };
+};

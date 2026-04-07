@@ -1,13 +1,16 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
-import CourseInfoCard from "./_components/CourseInfoCard";
-import CourseChapter from "./_components/CourseChapter";
-import CourseChatPanel from "./_components/CourseChatPanel";
+import { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { useParams } from "next/navigation";
-import { Course } from "@/type/CourseType";
 import { toast } from "sonner";
+
+import CourseChapter from "./_components/CourseChapter";
+import CourseChatPanel from "./_components/CourseChatPanel";
+import CourseInfoCard from "./_components/CourseInfoCard";
+import { Container } from "@/components/ui/container";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Course } from "@/type/CourseType";
 
 function CoursePreview() {
   const { courseId } = useParams();
@@ -17,198 +20,251 @@ function CoursePreview() {
   const [durationBySlideId, setDurationBySlideId] = useState<
     Record<string, number>
   >({});
-  const [loading, setLoading] = useState(true);
+  const [isLoadingCourse, setIsLoadingCourse] = useState(true);
+  const [isPreparingMedia, setIsPreparingMedia] = useState(true);
+  const [pageError, setPageError] = useState<string | null>(null);
 
+  const hasFetched = useRef(false);
   const fps = 30;
 
-  // ===============================
-  // Fetch Course Details
-  // ===============================
   const fetchCourseDetail = useCallback(async () => {
-    if (!courseId) return;
+    if (!courseId) {
+      setPageError("Course not found.");
+      return null;
+    }
 
     try {
-      const result = await axios.get("/api/course?courseId=" + courseId);
-
+      setPageError(null);
+      const result = await axios.get(`/api/course?courseId=${courseId}`);
       setCourseDetail(result.data);
-
-      return result.data;
+      return result.data as Course;
     } catch (error) {
       console.error("Error fetching course:", error);
+      const message =
+        error instanceof Error ? error.message : "Failed to load course details";
+      setPageError(message);
       toast.error("Failed to load course details");
+      return null;
     }
   }, [courseId]);
 
-  // ===============================
-  // Generate Video Content
-  // ===============================
   const generateVideoContent = useCallback(
     async (course: Course) => {
-      if (isGenerating) return;
+      if (isGenerating) {
+        return;
+      }
 
-      setIsGenerating(true);
-
-      const chapters = Array.isArray(course?.courseLayout?.chapters)
+      const chapters = Array.isArray(course.courseLayout?.chapters)
         ? course.courseLayout.chapters
         : [];
 
-      if (chapters.length === 0) return;
+      if (chapters.length === 0) {
+        setIsPreparingMedia(false);
+        return;
+      }
+
+      setIsGenerating(true);
+      const toastId = toast.loading(
+        `Preparing ${chapters.length} chapter${chapters.length === 1 ? "" : "s"}...`,
+      );
 
       try {
-        // Generate content for all chapters IN PARALLEL
-        const toastLoading = toast.loading(
-          `Generating content for ${chapters.length} chapters...`,
-        );
-
         await Promise.all(
-          chapters.map((chapter, i) =>
+          chapters.map((chapter, index) =>
             axios.post("/api/generate-video-content", {
-              chapter: chapter,
-              chapterId: chapter.chapterId || String(i),
-              courseId: courseId,
+              chapter,
+              chapterId: chapter.chapterId || String(index),
+              courseId,
             }),
           ),
         );
 
-        toast.success(`✓ All ${chapters.length} chapters generated!`, {
-          id: toastLoading,
-        });
-
-        // Refetch updated course data
+        toast.success("Course media is ready.", { id: toastId });
         await fetchCourseDetail();
       } catch (error) {
         console.error("Generation error:", error);
-        toast.error("Failed to generate content", {
-          id: toast.loading(""),
-        });
+        toast.error("Failed to prepare course media.", { id: toastId });
       } finally {
         setIsGenerating(false);
       }
     },
-    [courseId, isGenerating, fetchCourseDetail],
+    [courseId, fetchCourseDetail, isGenerating],
   );
 
-  // ===============================
-  // Initial Load
-  // ===============================
-  // Inside CoursePreview component
-  const hasFetched = useRef(false);
-
   useEffect(() => {
+    let mounted = true;
+
     const init = async () => {
-      // Only run this logic once
-      if (hasFetched.current) return;
+      setIsLoadingCourse(true);
 
       const data = await fetchCourseDetail();
-      if (data && data.chapterContentSlides?.length === 0) {
-        hasFetched.current = true; // Mark as called
-        await generateVideoContent(data);
+
+      if (!mounted) {
+        return;
+      }
+
+      setIsLoadingCourse(false);
+
+      if (
+        data &&
+        !hasFetched.current &&
+        (data.chapterContentSlides?.length ?? 0) === 0
+      ) {
+        hasFetched.current = true;
+        setIsPreparingMedia(true);
+        void generateVideoContent(data);
       }
     };
-    init();
+
+    void init();
+
+    return () => {
+      mounted = false;
+    };
   }, [fetchCourseDetail, generateVideoContent]);
 
-  // ===============================
-  // Calculate Audio Durations
-  // ===============================
   useEffect(() => {
     let cancelled = false;
 
     const calculateAudioDurations = async () => {
       const slides = courseDetail?.chapterContentSlides ?? [];
 
-      if (slides.length === 0) {
-        setLoading(false);
+      if (!courseDetail) {
         return;
       }
 
+      if (slides.length === 0) {
+        setDurationBySlideId({});
+        setIsPreparingMedia(isGenerating);
+        return;
+      }
+
+      setIsPreparingMedia(true);
+
       const durationMap: Record<string, number> = {};
 
-      // Fetch audio duration for each slide
-      const promises = slides.map(async (slide) => {
-        try {
-          // Create an audio element to get duration
-          const audio = new Audio();
+      const results = await Promise.all(
+        slides.map(async (slide) => {
+          try {
+            const audio = new Audio();
 
-          return new Promise<[string, number]>((resolve) => {
-            audio.addEventListener("loadedmetadata", () => {
-              // Convert seconds to frames (at 30 fps)
-              const frames = Math.max(30, Math.ceil(audio.duration * fps));
-              resolve([slide.slideId, frames]);
-            });
+            return await new Promise<[string, number]>((resolve) => {
+              const cleanup = () => {
+                audio.src = "";
+              };
 
-            audio.addEventListener("error", () => {
-              console.warn(
-                `Failed to load audio for ${slide.slideId}, using default duration`,
+              const resolveWithFrames = (frames: number) => {
+                cleanup();
+                resolve([slide.slideId, frames]);
+              };
+
+              const timeout = window.setTimeout(() => {
+                resolveWithFrames(Math.ceil(6 * fps));
+              }, 5000);
+
+              audio.addEventListener(
+                "loadedmetadata",
+                () => {
+                  window.clearTimeout(timeout);
+                  resolveWithFrames(Math.max(30, Math.ceil(audio.duration * fps)));
+                },
+                { once: true },
               );
-              // Use default 6 second (180 frames) duration on error
-              resolve([slide.slideId, Math.ceil(6 * fps)]);
-            });
 
-            // Set timeout to avoid hanging
-            const timeout = setTimeout(() => {
-              console.warn(
-                `Audio load timeout for ${slide.slideId}, using default duration`,
+              audio.addEventListener(
+                "error",
+                () => {
+                  window.clearTimeout(timeout);
+                  resolveWithFrames(Math.ceil(6 * fps));
+                },
+                { once: true },
               );
-              resolve([slide.slideId, Math.ceil(6 * fps)]);
-            }, 5000);
 
-            audio.addEventListener(
-              "canplaythrough",
-              () => clearTimeout(timeout),
-              { once: true },
+              audio.src = slide.audioFileUrl;
+              audio.load();
+            });
+          } catch (error) {
+            console.error(
+              `Error calculating duration for ${slide.slideId}:`,
+              error,
             );
-
-            audio.src = slide.audioFileUrl;
-            audio.load();
-          });
-        } catch (error) {
-          console.error(
-            `Error calculating duration for ${slide.slideId}:`,
-            error,
-          );
-          // Return default duration on error
-          return [slide.slideId, Math.ceil(6 * fps)] as [string, number];
-        }
-      });
-
-      const results = await Promise.all(promises);
+            return [slide.slideId, Math.ceil(6 * fps)] as [string, number];
+          }
+        }),
+      );
 
       if (!cancelled) {
         results.forEach(([slideId, frames]) => {
           durationMap[slideId] = frames;
         });
         setDurationBySlideId(durationMap);
-        setLoading(false);
+        setIsPreparingMedia(false);
       }
     };
 
-    calculateAudioDurations();
+    void calculateAudioDurations();
 
     return () => {
       cancelled = true;
     };
-  }, [courseDetail, fps]);
+  }, [courseDetail, fps, isGenerating]);
 
-  // ===============================
-  // UI
-  // ===============================
+  if (isLoadingCourse) {
+    return (
+      <main className="py-12 sm:py-16">
+        <Container size="xl" className="space-y-8">
+          <div className="grid gap-6 rounded-3xl border border-border bg-white p-6 sm:grid-cols-[1.1fr_0.9fr] sm:p-8">
+            <div className="space-y-4">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="h-10 w-3/4" />
+              <Skeleton className="h-5 w-full" />
+              <Skeleton className="h-5 w-5/6" />
+              <div className="flex gap-3">
+                <Skeleton className="h-10 w-28" />
+                <Skeleton className="h-10 w-32" />
+              </div>
+            </div>
+            <Skeleton className="aspect-video w-full rounded-2xl" />
+          </div>
+          <div className="space-y-4">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-48 w-full rounded-2xl" />
+            <Skeleton className="h-48 w-full rounded-2xl" />
+          </div>
+        </Container>
+      </main>
+    );
+  }
+
   if (!courseDetail) {
-    return <div className="p-6">Loading course...</div>;
+    return (
+      <main className="py-12 sm:py-16">
+        <Container size="lg">
+          <div className="rounded-2xl border border-border bg-white px-6 py-8 text-sm text-slate-500">
+            {pageError || "This course is unavailable right now."}
+          </div>
+        </Container>
+      </main>
+    );
   }
 
   return (
-    <div className="flex flex-col items-center">
-      <CourseInfoCard
-        course={courseDetail}
-        durationBySlideId={durationBySlideId}
-      />
-      <CourseChapter
-        course={courseDetail}
-        durationBySlideId={durationBySlideId}
-      />
+    <main className="py-12 sm:py-16">
+      <Container size="xl" className="space-y-8">
+        <CourseInfoCard
+          course={courseDetail}
+          durationBySlideId={durationBySlideId}
+          isGenerating={isGenerating}
+          isPreparingMedia={isPreparingMedia}
+        />
+        <CourseChapter
+          course={courseDetail}
+          durationBySlideId={durationBySlideId}
+          isPreparingMedia={isPreparingMedia}
+        />
+      </Container>
       <CourseChatPanel course={courseDetail} />
-    </div>
+    </main>
   );
 }
 

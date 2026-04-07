@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
-import { Loader2, Send, X } from "lucide-react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { validateCommunityMessage } from "@/lib/community-guidelines";
 import { cn } from "@/lib/utils";
 
 type Props = {
   onSubmit: (content: string) => Promise<void>;
   onCancel?: () => void;
+  contextLabel?: string;
   placeholder?: string;
   submitLabel?: string;
   autoFocus?: boolean;
@@ -21,6 +21,7 @@ type Props = {
 function ReplyBox({
   onSubmit,
   onCancel,
+  contextLabel,
   placeholder = "Write your reply...",
   submitLabel = "Reply",
   autoFocus = false,
@@ -30,10 +31,18 @@ function ReplyBox({
   const [content, setContent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const validationMessage = useMemo(() => {
+    if (!content.trim()) {
+      return null;
+    }
+
+    return validateCommunityMessage(content, { minLength: 4 });
+  }, [content]);
+
   const handleSubmit = async () => {
     const trimmed = content.trim();
 
-    if (!trimmed || disabled || isSubmitting) {
+    if (!trimmed || disabled || isSubmitting || validationMessage) {
       return;
     }
 
@@ -42,67 +51,51 @@ function ReplyBox({
     try {
       await onSubmit(trimmed);
       setContent("");
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to submit reply",
-      );
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <div
-      className={cn(
-        "space-y-3 rounded-2xl border border-slate-200 bg-white/85 p-4 shadow-sm",
-        className,
-      )}
-    >
+    <div className={cn("space-y-3", className)}>
+      {contextLabel ? (
+        <p className="text-sm text-slate-500">{contextLabel}</p>
+      ) : null}
       <Textarea
         value={content}
         onChange={(event) => setContent(event.target.value)}
         placeholder={placeholder}
         autoFocus={autoFocus}
         disabled={disabled || isSubmitting}
-        className="min-h-28 resize-none rounded-2xl border-slate-200 bg-slate-50/90 px-4 py-3 text-slate-900 placeholder:text-slate-400 focus-visible:border-cyan-300 focus-visible:ring-cyan-100"
+        className="min-h-28"
         onKeyDown={(event) => {
-          if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+          if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
             event.preventDefault();
             void handleSubmit();
           }
         }}
       />
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-xs text-slate-500">
-          Anonymous reply. Press Ctrl/Cmd + Enter to send.
+      {validationMessage ? (
+        <p className="text-sm text-slate-500">{validationMessage}</p>
+      ) : (
+        <p className="text-xs text-slate-400">
+          Keep it constructive and specific.
         </p>
-        <div className="flex items-center gap-2">
-          {onCancel ? (
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={onCancel}
-              disabled={isSubmitting}
-              className="rounded-full text-slate-600 hover:bg-slate-100"
-            >
-              <X className="size-4" />
-              Cancel
-            </Button>
-          ) : null}
-          <Button
-            type="button"
-            onClick={() => void handleSubmit()}
-            disabled={disabled || isSubmitting || !content.trim()}
-            className="rounded-full bg-linear-to-r from-cyan-500 to-sky-500 px-5 text-white shadow-sm hover:from-cyan-400 hover:to-sky-400"
-          >
-            {isSubmitting ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Send className="size-4" />
-            )}
-            {submitLabel}
+      )}
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          onClick={() => void handleSubmit()}
+          disabled={disabled || isSubmitting || !content.trim() || !!validationMessage}
+        >
+          {isSubmitting ? "Sending..." : submitLabel}
+        </Button>
+        {onCancel ? (
+          <Button type="button" size="sm" variant="ghost" onClick={onCancel}>
+            Cancel
           </Button>
-        </div>
+        ) : null}
       </div>
     </div>
   );

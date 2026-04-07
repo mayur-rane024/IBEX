@@ -1,30 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, CircleAlert, Compass, MessageSquareText } from "lucide-react";
+import { Search } from "lucide-react";
 
 import CreateThreadDialog from "@/components/forum/CreateThreadDialog";
 import ThreadCard from "@/components/forum/ThreadCard";
-import { Button } from "@/components/ui/button";
-import {
-  Empty,
-  EmptyContent,
-  EmptyDescription,
-  EmptyHeader,
-  EmptyMedia,
-  EmptyTitle,
-} from "@/components/ui/empty";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+import { Input } from "@/components/ui/input";
+import { Container } from "@/components/ui/container";
+import { Divider } from "@/components/ui/divider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ForumThread, ForumThreadsResponse, readApiResponse } from "@/lib/forum";
+
+type Props = {
+  canCreateThread: boolean;
+  gateMessage: string | null;
+};
 
 const DEFAULT_LIMIT = 10;
 
@@ -33,7 +24,7 @@ const parsePositiveNumber = (value: string | null, fallback: number) => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 };
 
-function ForumListPage() {
+function ForumListPage({ canCreateThread, gateMessage }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const page = parsePositiveNumber(searchParams.get("page"), 1);
@@ -42,6 +33,7 @@ function ForumListPage() {
     DEFAULT_LIMIT,
   );
 
+  const [search, setSearch] = useState("");
   const [data, setData] = useState<ForumThreadsResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,9 +48,7 @@ function ForumListPage() {
       try {
         const response = await fetch(
           `/api/forum/threads?page=${page}&pageSize=${limit}`,
-          {
-            cache: "no-store",
-          },
+          { cache: "no-store" },
         );
         const result = await readApiResponse<ForumThreadsResponse>(response);
 
@@ -70,7 +60,7 @@ function ForumListPage() {
           setError(
             loadError instanceof Error
               ? loadError.message
-              : "Failed to load forum threads",
+              : "Failed to fetch threads",
           );
         }
       } finally {
@@ -85,187 +75,125 @@ function ForumListPage() {
     return () => {
       cancelled = true;
     };
-  }, [page, limit]);
+  }, [limit, page]);
 
-  const buildPageHref = (nextPage: number) => {
+  const filteredThreads = useMemo(() => {
+    const items = data?.items ?? [];
+    const query = search.trim().toLowerCase();
+
+    if (!query) {
+      return items;
+    }
+
+    return items.filter((thread) =>
+      [thread.title, thread.content, thread.pseudonym]
+        .join(" ")
+        .toLowerCase()
+        .includes(query),
+    );
+  }, [data?.items, search]);
+
+  const goToPage = (nextPage: number) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("page", String(nextPage));
     params.set("limit", String(limit));
-    return `/forum?${params.toString()}`;
+    router.push(`/forum?${params.toString()}`);
   };
 
   return (
-    <div className="min-h-[calc(100vh-88px)] bg-[linear-gradient(180deg,#f8fcff_0%,#eef6fb_100%)] px-4 py-8 sm:px-6 lg:px-8">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
-        <section className="overflow-hidden rounded-[32px] border border-slate-200/80 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.22),transparent_30%),radial-gradient(circle_at_top_right,rgba(245,158,11,0.18),transparent_30%),white] px-6 py-8 shadow-[0_28px_80px_-36px_rgba(15,23,42,0.35)] sm:px-8 sm:py-10">
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-            <div className="max-w-3xl space-y-4">
-              <div className="inline-flex items-center gap-2 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-sm font-medium text-cyan-700">
-                <Compass className="size-4" />
-                Anonymous Forum
-              </div>
-              <div className="space-y-3">
-                <h1 className="text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-                  Ask boldly. Learn quietly. Stay anonymous.
-                </h1>
-                <p className="max-w-2xl text-[15px] leading-7 text-slate-600 sm:text-base">
-                  IBEX Forum blends community learning with pseudonymous
-                  identity, so questions stay honest, replies stay threaded,
-                  and personal accounts stay private.
-                </p>
-              </div>
+    <main className="py-12 sm:py-16">
+      <Container size="lg" className="space-y-8">
+        <section className="space-y-4">
+          <div className="space-y-2">
+            <p className="text-sm font-medium uppercase tracking-[0.24em] text-slate-400">
+              Forum
+            </p>
+            <h1 className="text-4xl font-bold text-slate-950">
+              Anonymous discussions
+            </h1>
+            <p className="max-w-2xl text-base leading-7 text-slate-500">
+              Ask carefully, reply thoughtfully, and let curiosity take the lead.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="relative max-w-xl flex-1">
+              <Search className="pointer-events-none absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search threads"
+                className="pl-10"
+              />
             </div>
-            <CreateThreadDialog
-              onCreated={(thread: ForumThread) => {
-                router.push(`/forum/${thread.id}`);
-              }}
-            />
+            <div className="space-y-1">
+              <CreateThreadDialog
+                canCreateThread={canCreateThread}
+                gateMessage={gateMessage}
+                onCreated={(thread: ForumThread) => {
+                  router.push(`/forum/${thread.id}`);
+                }}
+              />
+              {!canCreateThread && gateMessage ? (
+                <p className="text-sm text-slate-500">{gateMessage}.</p>
+              ) : null}
+            </div>
           </div>
         </section>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/85 px-6 py-5 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.35)]">
-            <p className="text-sm font-medium uppercase tracking-[0.22em] text-slate-400">
-              Threads
-            </p>
-            <p className="mt-2 text-3xl font-semibold text-slate-950">
-              {data?.pagination.total ?? "--"}
-            </p>
-          </div>
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/85 px-6 py-5 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.35)]">
-            <p className="text-sm font-medium uppercase tracking-[0.22em] text-slate-400">
-              Current page
-            </p>
-            <p className="mt-2 text-3xl font-semibold text-slate-950">{page}</p>
-          </div>
-          <div className="rounded-[28px] border border-slate-200/80 bg-white/85 px-6 py-5 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.35)]">
-            <p className="text-sm font-medium uppercase tracking-[0.22em] text-slate-400">
-              Threads per page
-            </p>
-            <p className="mt-2 text-3xl font-semibold text-slate-950">{limit}</p>
-          </div>
-        </section>
-
-        <section className="space-y-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-950">
-                Community threads
-              </h2>
-              <p className="text-sm text-slate-500">
-                Browse current anonymous discussions and jump into a thread.
-              </p>
-            </div>
-            <Button
-              asChild
-              variant="outline"
-              className="rounded-full border-slate-200 bg-white/80 text-slate-700 shadow-xs hover:bg-white"
-            >
-              <Link href="/">
-                Back home
-                <ArrowRight className="size-4" />
-              </Link>
-            </Button>
-          </div>
-
+        <section className="rounded-xl border border-border bg-white">
           {isLoading ? (
-            <div className="grid gap-5 lg:grid-cols-2">
-              {Array.from({ length: 4 }).map((_, index) => (
-                <div
-                  key={index}
-                  className="rounded-[28px] border border-slate-200/80 bg-white/90 p-6 shadow-[0_18px_50px_-28px_rgba(15,23,42,0.2)]"
-                >
-                  <Skeleton className="h-6 w-28 rounded-full" />
-                  <Skeleton className="mt-5 h-8 w-3/4 rounded-xl" />
-                  <Skeleton className="mt-3 h-4 w-full rounded-lg" />
-                  <Skeleton className="mt-2 h-4 w-11/12 rounded-lg" />
-                  <div className="mt-6 flex items-center gap-3">
-                    <Skeleton className="size-11 rounded-full" />
-                    <div className="space-y-2">
-                      <Skeleton className="h-4 w-32 rounded-lg" />
-                      <Skeleton className="h-3 w-24 rounded-lg" />
-                    </div>
-                  </div>
+            <div className="divide-y divide-border px-6 py-2">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={index} className="space-y-3 py-5">
+                  <Skeleton className="h-6 w-2/5" />
+                  <Skeleton className="h-4 w-1/3" />
+                  <Skeleton className="h-4 w-full" />
                 </div>
               ))}
             </div>
           ) : error ? (
-            <div className="rounded-[28px] border border-rose-200 bg-rose-50 px-6 py-5 text-rose-800 shadow-sm">
-              <div className="flex items-start gap-3">
-                <CircleAlert className="mt-0.5 size-5 shrink-0" />
-                <div className="space-y-1">
-                  <h3 className="font-semibold">Forum unavailable</h3>
-                  <p className="text-sm leading-6">{error}</p>
-                </div>
-              </div>
+            <div className="px-6 py-6 text-sm text-slate-500">{error}</div>
+          ) : filteredThreads.length === 0 ? (
+            <div className="px-6 py-10 text-sm text-slate-500">
+              {search.trim()
+                ? "No threads match your search."
+                : "No discussions yet."}
             </div>
-          ) : data && data.items.length === 0 ? (
-            <Empty className="rounded-[32px] border-slate-200/80 bg-white/85 py-16 shadow-[0_18px_50px_-30px_rgba(15,23,42,0.25)]">
-              <EmptyHeader>
-                <EmptyMedia variant="icon" className="bg-cyan-50 text-cyan-700">
-                  <MessageSquareText className="size-6" />
-                </EmptyMedia>
-                <EmptyTitle>No threads yet</EmptyTitle>
-                <EmptyDescription>
-                  Start the first anonymous discussion and give your peers a safe
-                  place to respond.
-                </EmptyDescription>
-              </EmptyHeader>
-              <EmptyContent>
-                <CreateThreadDialog
-                  onCreated={(thread: ForumThread) => {
-                    router.push(`/forum/${thread.id}`);
-                  }}
-                />
-              </EmptyContent>
-            </Empty>
           ) : (
-            <>
-              <div className="grid gap-5 lg:grid-cols-2">
-                {data?.items.map((thread) => (
-                  <ThreadCard key={thread.id} thread={thread} />
-                ))}
-              </div>
-              {data && data.pagination.totalPages > 1 ? (
-                <Pagination className="justify-end">
-                  <PaginationContent>
-                    <PaginationItem>
-                      <PaginationPrevious
-                        href={page > 1 ? buildPageHref(page - 1) : "#"}
-                        aria-disabled={page <= 1}
-                        className={
-                          page <= 1 ? "pointer-events-none opacity-50" : ""
-                        }
-                      />
-                    </PaginationItem>
-                    <PaginationItem>
-                      <span className="inline-flex h-9 items-center rounded-full border border-slate-200 bg-white px-4 text-sm font-medium text-slate-600 shadow-xs">
-                        Page {page} of {data.pagination.totalPages}
-                      </span>
-                    </PaginationItem>
-                    <PaginationItem>
-                      <PaginationNext
-                        href={
-                          page < data.pagination.totalPages
-                            ? buildPageHref(page + 1)
-                            : "#"
-                        }
-                        aria-disabled={page >= data.pagination.totalPages}
-                        className={
-                          page >= data.pagination.totalPages
-                            ? "pointer-events-none opacity-50"
-                            : ""
-                        }
-                      />
-                    </PaginationItem>
-                  </PaginationContent>
-                </Pagination>
-              ) : null}
-            </>
+            <ul className="divide-y divide-border px-4 sm:px-6">
+              {filteredThreads.map((thread) => (
+                <ThreadCard key={thread.id} thread={thread} />
+              ))}
+            </ul>
           )}
         </section>
-      </div>
-    </div>
+
+        {data && data.pagination.totalPages > 1 ? (
+          <div className="flex items-center justify-between rounded-xl border border-border bg-white px-4 py-3 text-sm text-slate-500">
+            <button
+              type="button"
+              onClick={() => goToPage(page - 1)}
+              disabled={page <= 1}
+              className="transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Previous
+            </button>
+            <span>
+              Page {page} of {data.pagination.totalPages}
+            </span>
+            <button
+              type="button"
+              onClick={() => goToPage(page + 1)}
+              disabled={page >= data.pagination.totalPages}
+              className="transition-colors hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+            </button>
+          </div>
+        ) : null}
+      </Container>
+    </main>
   );
 }
 

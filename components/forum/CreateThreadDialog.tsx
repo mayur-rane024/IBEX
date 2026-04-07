@@ -1,8 +1,6 @@
 "use client";
 
-import { useState } from "react";
-import { Loader2, MessageSquarePlus } from "lucide-react";
-import { toast } from "sonner";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -16,17 +14,31 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { validateCommunityMessage } from "@/lib/community-guidelines";
 import { ForumThread, readApiResponse } from "@/lib/forum";
 
 type Props = {
+  canCreateThread: boolean;
+  gateMessage: string | null;
   onCreated: (thread: ForumThread) => void;
 };
 
-function CreateThreadDialog({ onCreated }: Props) {
+function CreateThreadDialog({ canCreateThread, gateMessage, onCreated }: Props) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const validationMessage = useMemo(() => {
+    if (!title.trim() && !content.trim()) {
+      return null;
+    }
+
+    return (
+      validateCommunityMessage(title, { minLength: 6 }) ||
+      validateCommunityMessage(content, { minLength: 10 })
+    );
+  }, [content, title]);
 
   const resetForm = () => {
     setTitle("");
@@ -37,7 +49,13 @@ function CreateThreadDialog({ onCreated }: Props) {
     const trimmedTitle = title.trim();
     const trimmedContent = content.trim();
 
-    if (!trimmedTitle || !trimmedContent || isSubmitting) {
+    if (
+      !canCreateThread ||
+      !trimmedTitle ||
+      !trimmedContent ||
+      isSubmitting ||
+      validationMessage
+    ) {
       return;
     }
 
@@ -56,14 +74,9 @@ function CreateThreadDialog({ onCreated }: Props) {
       });
 
       const thread = await readApiResponse<ForumThread>(response);
-      toast.success("Thread published anonymously");
       resetForm();
       setOpen(false);
       onCreated(thread);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to create thread",
-      );
     } finally {
       setIsSubmitting(false);
     }
@@ -73,6 +86,10 @@ function CreateThreadDialog({ onCreated }: Props) {
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
+        if (!canCreateThread) {
+          return;
+        }
+
         setOpen(nextOpen);
         if (!nextOpen && !isSubmitting) {
           resetForm();
@@ -80,77 +97,72 @@ function CreateThreadDialog({ onCreated }: Props) {
       }}
     >
       <DialogTrigger asChild>
-        <Button className="rounded-full bg-linear-to-r from-cyan-500 to-sky-500 px-5 text-white shadow-sm hover:from-cyan-400 hover:to-sky-400">
-          <MessageSquarePlus className="size-4" />
-          Create Thread
-        </Button>
+        <span title={gateMessage ?? undefined}>
+          <Button
+            disabled={!canCreateThread}
+            className="min-w-36"
+            aria-disabled={!canCreateThread}
+          >
+            Ask Question
+          </Button>
+        </span>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl rounded-[28px] border-slate-200 bg-white/95 p-0 shadow-[0_28px_80px_-30px_rgba(15,23,42,0.35)]">
-        <DialogHeader className="gap-3 border-b border-slate-100 px-6 py-6 sm:px-8">
-          <DialogTitle className="text-2xl text-slate-950">
-            Start an anonymous thread
-          </DialogTitle>
-          <DialogDescription className="text-sm leading-6 text-slate-500">
-            Your forum identity will appear only as your pseudonym and avatar.
-            No personal account details are shown to others.
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Ask an anonymous question</DialogTitle>
+          <DialogDescription>
+            Your pseudonym and avatar are shown, never your real account details.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-5 px-6 py-6 sm:px-8">
+
+        <div className="space-y-4">
           <div className="space-y-2">
-            <label
-              className="text-sm font-medium text-slate-700"
-              htmlFor="thread-title"
-            >
+            <label htmlFor="thread-title" className="text-sm font-medium text-slate-700">
               Title
             </label>
             <Input
               id="thread-title"
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="What would you like to ask the community?"
+              placeholder="Summarize your question"
               disabled={isSubmitting}
-              className="h-12 rounded-2xl border-slate-200 bg-slate-50/90 px-4 text-slate-900 placeholder:text-slate-400 focus-visible:border-cyan-300 focus-visible:ring-cyan-100"
             />
           </div>
+
           <div className="space-y-2">
-            <label
-              className="text-sm font-medium text-slate-700"
-              htmlFor="thread-content"
-            >
-              Description
+            <label htmlFor="thread-content" className="text-sm font-medium text-slate-700">
+              Details
             </label>
             <Textarea
               id="thread-content"
               value={content}
               onChange={(event) => setContent(event.target.value)}
-              placeholder="Share the context, what you tried, and what you want help with."
+              placeholder="Share context, what you tried, and where you're stuck."
               disabled={isSubmitting}
-              className="min-h-44 rounded-2xl border-slate-200 bg-slate-50/90 px-4 py-3 text-slate-900 placeholder:text-slate-400 focus-visible:border-cyan-300 focus-visible:ring-cyan-100"
             />
           </div>
+
+          {validationMessage ? (
+            <p className="text-sm text-slate-500">{validationMessage}</p>
+          ) : null}
         </div>
-        <DialogFooter className="border-t border-slate-100 px-6 py-5 sm:px-8">
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => setOpen(false)}
-            disabled={isSubmitting}
-            className="rounded-full text-slate-600 hover:bg-slate-100"
-          >
+
+        <DialogFooter>
+          <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
             Cancel
           </Button>
           <Button
             type="button"
             onClick={() => void handleSubmit()}
-            disabled={isSubmitting || !title.trim() || !content.trim()}
-            className="rounded-full bg-linear-to-r from-cyan-500 to-sky-500 px-5 text-white shadow-sm hover:from-cyan-400 hover:to-sky-400"
+            disabled={
+              !canCreateThread ||
+              isSubmitting ||
+              !title.trim() ||
+              !content.trim() ||
+              !!validationMessage
+            }
           >
-            {isSubmitting ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <MessageSquarePlus className="size-4" />
-            )}
-            Publish thread
+            {isSubmitting ? "Posting..." : "Post thread"}
           </Button>
         </DialogFooter>
       </DialogContent>

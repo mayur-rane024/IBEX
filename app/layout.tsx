@@ -1,13 +1,19 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata } from "next";
+import { Inter } from "next/font/google";
 
 import Header from "@/app/_components/Header";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+});
+
 export const metadata: Metadata = {
   title: "IBEX",
-  description: "AI-powered learning platform backend",
+  description: "Anonymous AI learning platform",
 };
 
 export default function RootLayout({
@@ -18,8 +24,8 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en">
-        <body className="font-sans">
-          <div className="max-w-7xl mx-auto">
+        <body className={`${inter.variable} font-sans`}>
+          <div className="relative min-h-screen">
             <Header />
             {children}
             <Toaster position="top-center" richColors />

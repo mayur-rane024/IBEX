@@ -5,62 +5,66 @@ import {
   SignedIn,
   SignedOut,
   UserButton,
-  useUser,
 } from "@clerk/nextjs";
-import { MessageSquareText } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 
-import { Button } from "@/components/ui/button";
+import { Container } from "@/components/ui/container";
+
+const navItems = [
+  { href: "/forum", label: "Forum" },
+  { href: "/generate", label: "Generate" },
+  { href: "/profile", label: "Profile" },
+];
+
+const navItemClass =
+  "text-sm font-medium text-slate-500 transition-colors hover:text-slate-950";
 
 const Header = () => {
-  const { user } = useUser();
-
   return (
-    <div className="px-4 pt-4">
-      <div className="flex items-center justify-between rounded-[28px] border border-slate-200/80 bg-white/80 px-4 py-3 shadow-[0_18px_50px_-34px_rgba(15,23,42,0.3)] backdrop-blur sm:px-5">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2">
-            <Image src="/logo.png" alt="logo" width={45} height={45} />
-            <h2 className="text-xl font-bold">
-              <span className="text-primary">Vid</span>Course
-            </h2>
-          </Link>
-        </div>
-
-        <ul className="hidden items-center gap-6 text-center md:flex">
-          <li className="text-sm font-medium text-slate-600 transition-colors hover:text-primary">
-            <Link href="/">Home</Link>
-          </li>
-          <li className="text-sm font-medium text-slate-600 transition-colors hover:text-primary">
-            <Link href="/forum">Forum</Link>
-          </li>
-          <li className="text-sm font-medium text-slate-500">Pricing</li>
-        </ul>
-
-        <SignedIn>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/forum"
-              className="hidden items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-slate-700 transition-colors hover:border-cyan-200 hover:bg-cyan-50 hover:text-cyan-700 sm:flex"
-            >
-              <MessageSquareText className="size-4" />
-              Forum
-            </Link>
-            <span className="hidden text-sm font-medium text-gray-700 sm:inline">
-              {user?.firstName || user?.username || "Learner"}
-            </span>
-            <UserButton afterSignOutUrl="/" />
+    <header className="sticky top-0 z-40 border-b border-white/60 bg-background/92 backdrop-blur-md">
+      <Container
+        size="xl"
+        className="flex flex-wrap items-center justify-between gap-4 py-4"
+      >
+        <Link href="/" className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-linear-to-br from-indigo-500 to-cyan-400 text-sm font-semibold text-white">
+            IB
           </div>
-        </SignedIn>
+          <div>
+            <p className="text-base font-semibold text-slate-950">IBEX</p>
+            <p className="text-xs text-slate-500">Anonymous learning</p>
+          </div>
+        </Link>
 
-        <SignedOut>
-          <SignInButton mode="modal">
-            <Button className="rounded-full">Get Started</Button>
-          </SignInButton>
-        </SignedOut>
-      </div>
-    </div>
+        <nav className="order-3 flex w-full items-center gap-5 overflow-x-auto pb-1 md:order-none md:w-auto md:justify-center md:pb-0">
+          <Link href="/" className={navItemClass}>
+            Home
+          </Link>
+          {navItems.map((item) => (
+            <Link key={item.href} href={item.href} className={navItemClass}>
+              {item.label}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="flex items-center gap-3">
+          <SignedIn>
+            <UserButton afterSignOutUrl="/" />
+          </SignedIn>
+
+          <SignedOut>
+            <SignInButton mode="modal">
+              <button
+                type="button"
+                className="inline-flex h-11 items-center justify-center rounded-xl bg-primary px-4 text-sm font-medium text-white transition-colors hover:bg-[#4338ca]"
+              >
+                Sign in
+              </button>
+            </SignInButton>
+          </SignedOut>
+        </div>
+      </Container>
+    </header>
   );
 };
 

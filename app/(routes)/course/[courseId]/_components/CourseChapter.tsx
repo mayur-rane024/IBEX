@@ -1,115 +1,128 @@
-import React from "react";
-
-import { Course } from "@/type/CourseType";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
-import { Dot } from "lucide-react";
-
+import { Dot, PlayCircle } from "lucide-react";
 import { Player } from "@remotion/player";
+
 import { CourseComposition } from "./ChapterVideo";
+import { Course } from "@/type/CourseType";
 
 type Props = {
   course: Course | undefined;
   durationBySlideId: Record<string, number>;
+  isPreparingMedia: boolean;
 };
 
-function CourseChapter({ course, durationBySlideId }: Props) {
+function CourseChapter({
+  course,
+  durationBySlideId,
+  isPreparingMedia,
+}: Props) {
   const slides = course?.chapterContentSlides ?? [];
+  const chapters = course?.courseLayout?.chapters ?? [];
 
-  const GetChapterDurationInFrame = (chapterId: string) => {
-    if (!durationBySlideId || !course) return 30;
+  const getChapterDurationInFrames = (chapterId: string) =>
+    Math.max(
+      30,
+      slides
+        .filter((slide) => slide.chapterId === chapterId)
+        .reduce((sum, slide) => sum + (durationBySlideId[slide.slideId] ?? 180), 0),
+    );
 
-    return course?.chapterContentSlides
-      .filter((slide) => slide.chapterId === chapterId)
-      .reduce((sum, slide) => {
-        return sum + (durationBySlideId[slide.slideId] ?? 30);
-      }, 0);
-  };
+  if (chapters.length === 0) {
+    return (
+      <section className="rounded-2xl border border-border bg-white px-6 py-8 text-sm text-slate-500">
+        No chapters are available for this course yet.
+      </section>
+    );
+  }
 
   return (
-    <div
-      className="max-w-6xl -mt-5 p-10 border rounded-3xl shadow w-full
-
-    bg-background/80 backdrop-blur
-
-    "
-    >
-      <div className="flex justify-between items-center ">
-        <h2 className="font-bold text-2xl">Course Preivew</h2>
-
-        <h2 className="text-sm text-muted-foreground">
-          Chapters and Short Preview
-        </h2>
+    <section className="space-y-4">
+      <div className="space-y-1">
+        <h2 className="text-2xl font-semibold text-slate-950">Course outline</h2>
+        <p className="text-sm text-slate-500">
+          Each chapter includes the generated talking points and a short preview.
+        </p>
       </div>
 
-      <div className="mt-5">
-        {course?.courseLayout?.chapters &&
-          Array.isArray(course.courseLayout.chapters) &&
-          course.courseLayout.chapters.map((chapter, index) => (
-            <Card key={index} className="mb-5">
-              <CardHeader>
-                <div className="flex gap-3 items-center">
-                  <h2 className="p-2 bg-primary/60 inline-flex h-10 w-10 text-center rounded-2xl justify-center">
-                    {index + 1}
-                  </h2>
+      <div className="space-y-4">
+        {chapters.map((chapter, index) => {
+          const chapterSlides = slides.filter(
+            (slide) => slide.chapterId === chapter.chapterId,
+          );
 
-                  <CardTitle className="md:text-xl text-base">
-                    {chapter.chapterTitle}
-                  </CardTitle>
-                </div>
-
-                <CardContent>
-                  <div className="grid grid-cols-2 gap-5">
-                    <div>
-                      {chapter?.subContent.map((content: any, index: any) => (
-                        <div
-                          key={index}
-                          className="flex gap-2 items-center mt-2"
-                        >
-                          <Dot className="h-5 w-5 text-primary" />
-
-                          <h2>{content}</h2>
-                        </div>
-                      ))}
+          return (
+            <section
+              key={chapter.chapterId || index}
+              className="rounded-2xl border border-border bg-white p-5 sm:p-6"
+            >
+              <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="space-y-4">
+                  <div className="flex items-start gap-4">
+                    <div className="flex size-10 items-center justify-center rounded-xl border border-indigo-100 bg-indigo-50 text-sm font-semibold text-indigo-600">
+                      {index + 1}
                     </div>
-
-                    <div>
-                      <Player
-                        className="border-2 border-white/10 rounded-2xl"
-                        component={CourseComposition}
-                        durationInFrames={Math.max(
-                          30,
-                          slides
-                            .filter((slide) => slide.chapterId === chapter.chapterId)
-                            .reduce(
-                              (sum, slide) => sum + (durationBySlideId[slide.slideId] ?? 180),
-                              0,
-                            ),
-                        )}
-                        compositionWidth={1280}
-                        compositionHeight={720}
-                        fps={30}
-                        controls
-                        inputProps={{
-                          slides: slides.filter(
-                            (slide) => slide.chapterId === chapter.chapterId,
-                          ),
-                          durationsBySlideId: durationBySlideId??{},
-                        }}
-                        style={{
-                          width: "100%",
-                          aspectRatio: "16/9",
-                        }}
-                      />
+                    <div className="space-y-2">
+                      <h3 className="text-xl font-semibold text-slate-950">
+                        {chapter.chapterTitle}
+                      </h3>
+                      <p className="text-sm text-slate-500">
+                        {chapter.subContent.length} talking point
+                        {chapter.subContent.length === 1 ? "" : "s"}
+                      </p>
                     </div>
                   </div>
-                </CardContent>
-              </CardHeader>
-            </Card>
-          ))}
+
+                  <div className="space-y-3">
+                    {chapter.subContent.map((content, contentIndex) => (
+                      <div
+                        key={`${chapter.chapterId}-${contentIndex}`}
+                        className="flex items-start gap-2 text-sm leading-6 text-slate-600"
+                      >
+                        <Dot className="mt-1 size-5 shrink-0 text-cyan-500" />
+                        <span>{content}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-border bg-slate-50 p-3">
+                  {chapterSlides.length > 0 ? (
+                    <Player
+                      className="overflow-hidden rounded-xl border border-border bg-white"
+                      component={CourseComposition}
+                      durationInFrames={getChapterDurationInFrames(chapter.chapterId)}
+                      compositionWidth={1280}
+                      compositionHeight={720}
+                      fps={30}
+                      controls
+                      inputProps={{
+                        slides: chapterSlides,
+                        durationsBySlideId: durationBySlideId,
+                      }}
+                      style={{
+                        width: "100%",
+                        aspectRatio: "16/9",
+                      }}
+                    />
+                  ) : (
+                    <div className="flex aspect-video flex-col items-center justify-center rounded-xl border border-dashed border-border bg-white px-5 text-center">
+                      <PlayCircle className="size-8 text-indigo-500" />
+                      <p className="mt-3 text-sm font-medium text-slate-700">
+                        Preview not ready yet
+                      </p>
+                      <p className="mt-1 text-sm leading-6 text-slate-500">
+                        {isPreparingMedia
+                          ? "Media is still being prepared for this chapter."
+                          : "This chapter preview will appear after generation completes."}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
+          );
+        })}
       </div>
-    </div>
+    </section>
   );
 }
 

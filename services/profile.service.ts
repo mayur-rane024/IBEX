@@ -136,3 +136,20 @@ export const ensureProfile = async (userId: string) => {
 };
 
 export const getProfile = async (userId: string) => ensureProfile(userId);
+
+export const regenerateProfile = async (userId: string) => {
+  const profile = await ensureProfile(userId);
+  const pseudonym = buildPseudonym();
+  const avatar = buildAvatar(pseudonym);
+
+  const [updatedProfile] = await db
+    .update(profilesTable)
+    .set({
+      pseudonym,
+      avatar,
+    })
+    .where(eq(profilesTable.id, profile.id))
+    .returning();
+
+  return updatedProfile;
+};
