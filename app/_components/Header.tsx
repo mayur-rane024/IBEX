@@ -1,37 +1,24 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-// Clerk imports commented out — replaced with JWT auth via UserDetailContext
-// import { SignInButton, UserButton, useUser } from "@clerk/nextjs";
+import {
+  SignInButton,
+  SignedIn,
+  SignedOut,
+  UserButton,
+  useUser,
+} from "@clerk/nextjs";
 import Image from "next/image";
-import React, { useContext } from "react";
-import { UserDetailContext } from "@/context/UserDetailContext";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import axios from "axios";
+
+import { Button } from "@/components/ui/button";
 
 const Header = () => {
-  // JWT auth: read user from context (set by Provider via /api/auth/me)
-  const { userDetail, setUserDetail } = useContext(UserDetailContext);
-  const router = useRouter();
-
-  const handleLogout = async () => {
-    await axios.post(
-      "/api/auth/logout",
-      {},
-      {
-        withCredentials: true,
-      },
-    );
-    setUserDetail(null);
-    router.push("/sign-in");
-    router.refresh();
-  };
+  const { user } = useUser();
 
   return (
     <div className="flex items-center justify-between p-4">
       <div className="flex gap-2 items-center">
-        <Image src={"/logo.png"} alt="logo" width={45} height={45} />
+        <Image src="/logo.png" alt="logo" width={45} height={45} />
         <h2 className="text-xl font-bold">
           <span className="text-primary">Vid</span>Course
         </h2>
@@ -39,28 +26,27 @@ const Header = () => {
 
       <ul className="flex gap-8 text-center">
         <li className="text-lg hover:text-primary cursor-pointer font-medium">
-          Home
+          <Link href="/">Home</Link>
         </li>
         <li className="text-lg hover:text-primary cursor-pointer font-medium">
           Pricing
         </li>
       </ul>
 
-      {userDetail ? (
+      <SignedIn>
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium text-gray-700">
-            {userDetail.name}
+            {user?.firstName || user?.username || "Learner"}
           </span>
-          <Button variant="outline" size="sm" onClick={handleLogout}>
-            Sign Out
-          </Button>
+          <UserButton afterSignOutUrl="/" />
         </div>
-      ) : (
-        // Previously: <SignInButton mode="modal"><Button>Get Started</Button></SignInButton>
-        <Link href="/sign-in">
+      </SignedIn>
+
+      <SignedOut>
+        <SignInButton mode="modal">
           <Button>Get Started</Button>
-        </Link>
-      )}
+        </SignInButton>
+      </SignedOut>
     </div>
   );
 };

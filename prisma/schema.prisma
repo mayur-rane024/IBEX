@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String         @id
+  createdAt     DateTime       @default(now())
+  profile       Profile?
+  courses       Course[]
+  conversations Conversation[]
+  documents     Document[]
+}
+
+model Profile {
+  id        Int      @id @default(autoincrement())
+  userId    String   @unique
+  pseudonym String
+  avatar    String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Course {
+  id            String         @id
+  title         String
+  userId        String
+  createdAt     DateTime       @default(now())
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slides        Slide[]
+  conversations Conversation[]
+}
+
+model Slide {
+  id        Int      @id @default(autoincrement())
+  courseId  String
+  content   Json
+  videoUrl  String
+  createdAt DateTime @default(now())
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id        String    @id
+  userId    String
+  courseId  String?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course?   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  messages  Message[]
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  conversationId String
+  role           MessageRole
+  content        String
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}
+
+model Document {
+  id        String   @id
+  userId    String
+  title     String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum MessageRole {
+  user
+  assistant
+}

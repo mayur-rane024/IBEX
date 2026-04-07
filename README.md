@@ -7,12 +7,13 @@ This project creates short AI-powered video courses from a topic prompt.
 - Generates a **course layout** (chapters + subtopics)
 - Generates **slide content** and narration
 - Generates **audio (TTS)** for each slide
-- Stores courses/slides in DB with **local fallback** when DB is unavailable
+- Stores courses/slides in Postgres with strict user ownership
 - Supports multiple AI providers/models
 - Includes two chatbot modes:
 	- **Course chat** (ask questions about the current course)
 	- **Home topic chat** (query previous records by topic, upload PDF if no records exist)
 - Uses **Pinecone RAG** + local Ollama embeddings for retrieval
+- Uses **Clerk** for authentication across the app and API routes
 
 ## Tech stack
 
@@ -39,7 +40,8 @@ npm install
 Minimum local setup:
 
 ```env
-JWT_SECRET=replace_me
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=replace_me
+CLERK_SECRET_KEY=replace_me
 AUDIO_STORAGE=local
 
 OLLAMA_BASE_URL=http://127.0.0.1:11434
@@ -112,13 +114,7 @@ npm run dev
 - `POST /api/home-chat`
 - `POST /api/rag-upload-pdf`
 
-## Local fallback behavior
-
-If DB is unavailable, records are stored/read from:
-
-- `.local-data/db-fallback.json`
-
 ## Notes
 
-- Route files are canonical under `app/api/*` for chat/pdf endpoints to avoid route conflicts.
+- Route files are canonical under `app/api/*` and all protected routes enforce Clerk auth plus user-scoped authorization.
 - Keep secrets out of git and rotate any key that was ever exposed.

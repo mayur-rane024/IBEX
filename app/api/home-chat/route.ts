@@ -1,5 +1,6 @@
 export const runtime = "nodejs";
 
+import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 
 import { getGenerationModel } from "@/lib/ai-provider";
@@ -7,72 +8,57 @@ import {
   buildTopicContextFromMatches,
   queryTopicRecords,
 } from "@/lib/course-rag";
+import { unauthorized, handleRouteError } from "@/lib/route-errors";
 import {
-  saveChatMessage,
+  conversationQuerySchema,
+  homeChatRequestSchema,
+} from "@/lib/validators/chat";
+import {
+  addMessage,
   createConversation,
-  getConversationMessages,
-  generateConversationId,
-} from "@/lib/chat-persistence";
-import { auth } from "@clerk/nextjs/server";
+  getMessages,
+} from "@/services/chat.service";
 
 export async function POST(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return unauthorized();
+
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const body = homeChatRequestSchema.parse(await req.json());
 
-    const { topicName, question, conversationId } = await req.json();
+    const conversation =
+      body.conversationId
+        ? { id: body.conversationId }
+        : await createConversation(userId, null);
 
-    if (!topicName?.trim() || !question?.trim()) {
-      return NextResponse.json(
-        { error: "topicName and question are required" },
-        { status: 400 },
-      );
-    }
-
-    // Use provided conversationId or create new one
-    const chatConversationId =
-      conversationId || generateConversationId();
-
-    // Create conversation if it's new
-    if (!conversationId) {
-      await createConversation(
-        chatConversationId,
-        userId,
-        "home",
-        undefined,
-        topicName.trim(),
-        `Topic: ${topicName}`,
-      );
-    }
-
-    // Save user message
-    await saveChatMessage(
-      chatConversationId,
-      "user",
-      question,
-    );
+    await addMessage({
+      userId,
+      conversationId: conversation.id,
+      role: "user",
+      content: body.question,
+    });
 
     const ragResult = await queryTopicRecords({
-      topicName: topicName.trim(),
-      question: question.trim(),
+      userId,
+      topicName: body.topicName,
+      question: body.question,
       topK: 8,
     });
 
     if (!ragResult.matches.length) {
-      const errorMessage =
+      const answer =
         "I could not find records for this topic yet. Please upload a PDF so I can learn this topic first.";
-      
-      await saveChatMessage(
-        chatConversationId,
-        "assistant",
-        errorMessage,
-      );
+
+      await addMessage({
+        userId,
+        conversationId: conversation.id,
+        role: "assistant",
+        content: answer,
+      });
 
       return NextResponse.json({
-        answer: errorMessage,
-        conversationId: chatConversationId,
+        answer,
+        conversationId: conversation.id,
         needUpload: true,
         namespace: ragResult.namespace,
         pineconeAvailable: ragResult.pineconeAvailable,
@@ -80,7 +66,6 @@ export async function POST(req: NextRequest) {
     }
 
     const context = buildTopicContextFromMatches(ragResult.matches);
-
     const model = getGenerationModel({
       provider: "local-ai",
       temperature: 0.2,
@@ -99,77 +84,60 @@ Key Points:
 Next Step: <single actionable suggestion>
 
 TOPIC:
-${topicName}
+${body.topicName}
 
 CONTEXT:
 ${context}
 
 QUESTION:
-${question}
+${body.question}
 
 ANSWER:`;
 
     const response = await model.generateContent(prompt);
     const answer = response.response.text();
 
-    // Save assistant response
-    await saveChatMessage(
-      chatConversationId,
-      "assistant",
-      answer,
-      ragResult.matches.map((match) => match.metadata || {}),
-      { namespace: ragResult.namespace, pineconeAvailable: ragResult.pineconeAvailable },
-    );
+    await addMessage({
+      userId,
+      conversationId: conversation.id,
+      role: "assistant",
+      content: answer,
+      sources: ragResult.matches.map((match) => match.metadata || {}),
+      metadata: {
+        namespace: ragResult.namespace,
+        pineconeAvailable: ragResult.pineconeAvailable,
+      },
+    });
 
     return NextResponse.json({
-      answer: answer,
-      conversationId: chatConversationId,
+      answer,
+      conversationId: conversation.id,
       needUpload: false,
       namespace: ragResult.namespace,
       sources: ragResult.matches.map((match) => match.metadata || {}),
       pineconeAvailable: ragResult.pineconeAvailable,
     });
   } catch (error) {
-    console.error("Home chat error:", error);
-    return NextResponse.json(
-      { error: "Failed to process home chat query" },
-      { status: 500 },
-    );
+    return handleRouteError(error, "Failed to process home chat query");
   }
 }
 
-/**
- * GET /api/home-chat?conversationId=xxx
- * Retrieve chat history for a conversation
- */
 export async function GET(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return unauthorized();
+
   try {
-    const { userId } = await auth();
-    if (!userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const conversationId = conversationQuerySchema.parse({
+      conversationId: req.nextUrl.searchParams.get("conversationId"),
+    }).conversationId;
 
-    const url = new URL(req.url);
-    const conversationId = url.searchParams.get("conversationId");
-
-    if (!conversationId) {
-      return NextResponse.json(
-        { error: "conversationId is required" },
-        { status: 400 },
-      );
-    }
-
-    const messages = await getConversationMessages(conversationId);
+    const messages = await getMessages(userId, conversationId);
 
     return NextResponse.json({
       conversationId,
       messages,
     });
   } catch (error) {
-    console.error("Failed to get conversation:", error);
-    return NextResponse.json(
-      { error: "Failed to retrieve conversation" },
-      { status: 500 },
-    );
+    return handleRouteError(error, "Failed to retrieve conversation");
   }
 }

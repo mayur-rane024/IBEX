@@ -1,12 +1,8 @@
 import axios from "axios";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 
 import { db } from "@/config/db";
-import { chapterContentSlides, coursesTable } from "@/config/schema";
-import {
-  getLocalCourse,
-  isDatabaseConnectionError,
-} from "@/lib/dbFallback";
+import { coursesTable, slidesTable } from "@/config/schema";
 
 type CourseChapter = {
   chapterId: string;
@@ -36,6 +32,7 @@ type CourseSnapshot = {
 };
 
 type CourseRagSource = {
+  userId: string;
   courseId: string;
   courseName: string;
   courseDescription?: string;
@@ -83,12 +80,12 @@ const slugify = (value: string) =>
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
 
-export const topicNamespace = (value: string) => slugify(value) || "course";
+const userScopedPrefix = (userId: string) => slugify(userId) || "user";
 
-export const courseTopicNamespace = (value: string) => {
-  const topic = topicNamespace(value);
+export const courseTopicNamespace = (userId: string, value: string) => {
+  const topic = slugify(value) || "course";
   const prefix = slugify(PINECONE_NAMESPACE_PREFIX) || "course";
-  return `${prefix}-${topic}`;
+  return `${prefix}-${userScopedPrefix(userId)}-${topic}`;
 };
 
 const stripHtml = (value: string) =>
@@ -179,44 +176,38 @@ const pineconeRequest = async <T>(
   return response.data;
 };
 
-const buildOverviewText = (input: CourseRagSource) => {
-  const lines = [
+const buildOverviewText = (input: CourseRagSource) =>
+  [
     `Course: ${input.courseName}`,
     input.courseDescription ? `Description: ${input.courseDescription}` : "",
     input.userInput ? `Topic input: ${input.userInput}` : "",
-  ].filter(Boolean);
-
-  return lines.join("\n");
-};
+  ]
+    .filter(Boolean)
+    .join("\n");
 
 const buildChapterText = (chapter: CourseChapter, index: number) => {
   const bullets = chapter.subContent.map((item) => `- ${item}`).join("\n");
-  return [
-    `Chapter ${index + 1}: ${chapter.chapterTitle}`,
-    bullets,
-  ]
+  return [`Chapter ${index + 1}: ${chapter.chapterTitle}`, bullets]
     .filter(Boolean)
     .join("\n");
 };
 
-const buildSlideText = (slide: CourseSlide) => {
-  const parts = [
+const buildSlideText = (slide: CourseSlide) =>
+  [
     slide.title ? `Slide title: ${slide.title}` : "",
     slide.subtitle ? `Slide subtitle: ${slide.subtitle}` : "",
-    slide.narration?.fullText
-      ? `Narration: ${slide.narration.fullText}`
-      : "",
+    slide.narration?.fullText ? `Narration: ${slide.narration.fullText}` : "",
     slide.html ? `Visual notes: ${stripHtml(slide.html)}` : "",
-  ].filter(Boolean);
-
-  return parts.join("\n");
-};
+  ]
+    .filter(Boolean)
+    .join("\n");
 
 const buildVectorMetadata = (
   input: CourseRagSource,
   kind: string,
   extra: Record<string, string | number | boolean>,
 ) => ({
+  userId: input.userId,
   courseId: input.courseId,
   courseName: input.courseName,
   topicName:
@@ -226,80 +217,53 @@ const buildVectorMetadata = (
 });
 
 export const getCourseSnapshotByCourseId = async (
+  userId: string,
   courseId: string,
 ): Promise<CourseSnapshot | null> => {
-  try {
-    const courses = await db
-      .select()
-      .from(coursesTable)
-      .where(eq(coursesTable.courseId, courseId));
+  const courses = await db
+    .select()
+    .from(coursesTable)
+    .where(and(eq(coursesTable.id, courseId), eq(coursesTable.userId, userId)))
+    .limit(1);
 
-    const course = courses[0];
+  const course = courses[0];
 
-    if (!course) {
-      return null;
-    }
-
-    const slides = await db
-      .select()
-      .from(chapterContentSlides)
-      .where(eq(chapterContentSlides.courseId, courseId));
-
-    const courseLayout = (course.courseLayout as
-      | {
-          courseName?: string;
-          courseDescription?: string;
-          slideModel?: string;
-          chapters?: CourseChapter[];
-        }
-      | null)
-      ?? {};
-
-    return {
-      courseId,
-      courseName: courseLayout.courseName || course.courseName,
-      courseDescription:
-        courseLayout.courseDescription || `A concise course on ${course.courseName}.`,
-      topicName: courseLayout.courseName || course.courseName || course.userInput,
-      userInput: course.userInput,
-      slideModel: courseLayout.slideModel,
-      chapters: Array.isArray(courseLayout.chapters) ? courseLayout.chapters : [],
-      slides: slides as CourseSlide[],
-    };
-  } catch (error) {
-    if (!isDatabaseConnectionError(error)) {
-      throw error;
-    }
-
-    const localCourse = await getLocalCourse(courseId);
-
-    if (!localCourse) {
-      return null;
-    }
-
-    const courseLayout = (localCourse.courseLayout as
-      | {
-          courseName?: string;
-          courseDescription?: string;
-          slideModel?: string;
-          chapters?: CourseChapter[];
-        }
-      | null)
-      ?? {};
-
-    return {
-      courseId,
-      courseName: courseLayout.courseName || localCourse.courseName,
-      courseDescription:
-        courseLayout.courseDescription || `A concise course on ${localCourse.courseName}.`,
-      topicName:
-        courseLayout.courseName || localCourse.courseName || localCourse.userInput,
-      userInput: localCourse.userInput,
-      slideModel: courseLayout.slideModel,
-      chapters: Array.isArray(courseLayout.chapters) ? courseLayout.chapters : [],
-      slides: (localCourse.chapterContentSlides as CourseSlide[]) || [],
-    };
+  if (!course) {
+    return null;
   }
+
+  const slides = await db
+    .select()
+    .from(slidesTable)
+    .where(eq(slidesTable.courseId, courseId));
+
+  const courseLayout = (course.layout as
+    | {
+        courseName?: string;
+        courseDescription?: string;
+        slideModel?: string;
+        chapters?: CourseChapter[];
+      }
+    | null) ?? { chapters: [] };
+
+  return {
+    courseId: course.id,
+    courseName: courseLayout.courseName || course.title,
+    courseDescription:
+      courseLayout.courseDescription || `A concise course on ${course.title}.`,
+    topicName: courseLayout.courseName || course.title || course.prompt,
+    userInput: course.prompt,
+    slideModel: courseLayout.slideModel,
+    chapters: Array.isArray(courseLayout.chapters) ? courseLayout.chapters : [],
+    slides: slides.map((slide) => ({
+      slideId: slide.slideKey,
+      slideIndex: slide.slideIndex,
+      chapterId: slide.chapterId,
+      narration: slide.narration as { fullText?: string },
+      html: slide.html ?? "",
+      ...(slide.content as Record<string, unknown>),
+    })) as CourseSlide[],
+  };
 };
 
 export const indexCourseRagSource = async (input: CourseRagSource) => {
@@ -311,6 +275,7 @@ export const indexCourseRagSource = async (input: CourseRagSource) => {
   }
 
   const namespace = courseTopicNamespace(
+    input.userId,
     input.topicName || input.courseName || input.userInput || input.courseId,
   );
 
@@ -325,9 +290,7 @@ export const indexCourseRagSource = async (input: CourseRagSource) => {
     documents.push({
       id: `${input.courseId}:overview`,
       text: overviewText,
-      metadata: buildVectorMetadata(input, "overview", {
-        itemIndex: 0,
-      }),
+      metadata: buildVectorMetadata(input, "overview", { itemIndex: 0 }),
     });
   }
 
@@ -396,10 +359,12 @@ export const indexCourseRagSource = async (input: CourseRagSource) => {
 };
 
 export const queryCourseRag = async ({
+  userId,
   topicName,
   question,
   topK = 6,
 }: {
+  userId: string;
   topicName: string;
   question: string;
   topK?: number;
@@ -407,12 +372,12 @@ export const queryCourseRag = async ({
   if (!hasPineconeConfig()) {
     return {
       matches: [] as PineconeMatch[],
-      namespace: courseTopicNamespace(topicName),
+      namespace: courseTopicNamespace(userId, topicName),
       pineconeAvailable: false,
     };
   }
 
-  const namespace = courseTopicNamespace(topicName);
+  const namespace = courseTopicNamespace(userId, topicName);
   const vector = await embedText(question);
   const response = await pineconeRequest<{
     matches?: PineconeMatch[];
@@ -431,11 +396,13 @@ export const queryCourseRag = async ({
 };
 
 export const indexTopicRecords = async ({
+  userId,
   topicName,
   sourceId,
   records,
   metadata,
 }: {
+  userId: string;
   topicName: string;
   sourceId: string;
   records: string[];
@@ -448,8 +415,7 @@ export const indexTopicRecords = async ({
     };
   }
 
-  const namespace = courseTopicNamespace(topicName);
-
+  const namespace = courseTopicNamespace(userId, topicName);
   const flattened = records.flatMap((record) => chunkText(record));
 
   if (flattened.length === 0) {
@@ -469,6 +435,7 @@ export const indexTopicRecords = async ({
       values,
       metadata: {
         ...(metadata || {}),
+        userId,
         topicName,
         sourceId,
         kind: "external-record",
@@ -491,10 +458,12 @@ export const indexTopicRecords = async ({
 };
 
 export const queryTopicRecords = async ({
+  userId,
   topicName,
   question,
   topK = 8,
 }: {
+  userId: string;
   topicName: string;
   question: string;
   topK?: number;
@@ -502,12 +471,12 @@ export const queryTopicRecords = async ({
   if (!hasPineconeConfig()) {
     return {
       matches: [] as PineconeMatch[],
-      namespace: courseTopicNamespace(topicName),
+      namespace: courseTopicNamespace(userId, topicName),
       pineconeAvailable: false,
     };
   }
 
-  const namespace = courseTopicNamespace(topicName);
+  const namespace = courseTopicNamespace(userId, topicName);
   const vector = await embedText(question);
 
   const response = await pineconeRequest<{
@@ -574,7 +543,9 @@ export const buildCourseContextBlock = (
         safeString(metadata.chapterTitle)
           ? `Chapter: ${safeString(metadata.chapterTitle)}`
           : "",
-        safeString(metadata.slideId) ? `Slide: ${safeString(metadata.slideId)}` : "",
+        safeString(metadata.slideId)
+          ? `Slide: ${safeString(metadata.slideId)}`
+          : "",
         text ? `Text: ${text}` : "",
       ]
         .filter(Boolean)

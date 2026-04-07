@@ -1,11 +1,17 @@
 export const runtime = "nodejs";
 
+import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import pdfParse from "pdf-parse";
 
 import { indexTopicRecords } from "@/lib/course-rag";
+import { unauthorized, handleRouteError } from "@/lib/route-errors";
+import { createDocument } from "@/services/document.service";
 
 export async function POST(req: NextRequest) {
+  const { userId } = await auth();
+  if (!userId) return unauthorized();
+
   try {
     const formData = await req.formData();
     const topicName = String(formData.get("topicName") || "").trim();
@@ -43,9 +49,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const sourceId = `pdf:${Date.now()}:${file.name.replace(/\s+/g, "-")}`;
-
+    const sourceId = `pdf_${Date.now()}_${file.name.replace(/\s+/g, "-")}`;
     const result = await indexTopicRecords({
+      userId,
       topicName,
       sourceId,
       records: [text],
@@ -53,6 +59,14 @@ export async function POST(req: NextRequest) {
         sourceType: "pdf",
         fileName: file.name,
       },
+    });
+
+    await createDocument({
+      id: sourceId,
+      userId,
+      title: file.name,
+      topicName,
+      namespace: "namespace" in result ? result.namespace : null,
     });
 
     return NextResponse.json({
@@ -65,11 +79,6 @@ export async function POST(req: NextRequest) {
         : "PDF was processed, but indexing is not active",
     });
   } catch (error) {
-    console.error("PDF upload indexing error:", error);
-    return NextResponse.json(
-      { error: "Failed to upload and index PDF" },
-      { status: 500 },
-    );
+    return handleRouteError(error, "Failed to upload and index PDF");
   }
 }
-

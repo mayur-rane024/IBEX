@@ -1,13 +1,19 @@
 "use client";
-import React, { useContext, useState } from "react";
+
+import { useAuth } from "@clerk/nextjs";
+import axios, { AxiosError } from "axios";
+import { Loader2, Send } from "lucide-react";
+import { useRouter } from "next/navigation";
+import React, { useState } from "react";
+import { toast } from "sonner";
+import { v4 as uuidv4 } from "uuid";
+
 import {
   InputGroup,
   InputGroupAddon,
   InputGroupButton,
   InputGroupTextarea,
 } from "@/components/ui/input-group";
-import { Loader2, Send } from "lucide-react";
-
 import {
   Select,
   SelectContent,
@@ -18,14 +24,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { QUICK_VIDEO_SUGGESTIONS } from "@/data/constant";
-import axios from "axios";
-import { AxiosError } from "axios";
-import { toast } from "sonner";
-// Clerk imports commented out — replaced with JWT auth via UserDetailContext
-// import { SignInButton, useUser } from "@clerk/nextjs";
-import { UserDetailContext } from "@/context/UserDetailContext";
-import { useRouter } from "next/navigation";
-import { v4 as uuidv4 } from "uuid";
 
 const Hero = () => {
   const [userInput, setUserInput] = useState("");
@@ -33,11 +31,10 @@ const Hero = () => {
   const [aiProvider, setAiProvider] = useState("local-ai");
   const [slideModel, setSlideModel] = useState("ollama:mistral:latest");
   const [loading, setLoading] = useState(false);
-  // JWT auth: read user from context instead of Clerk's useUser()
-  const { userDetail } = useContext(UserDetailContext);
+  const { userId } = useAuth();
   const router = useRouter();
 
-  const GenerateCourseLayout = async () => {
+  const generateCourseLayout = async () => {
     if (!userInput.trim()) {
       toast.error("Enter a topic first");
       return;
@@ -48,23 +45,16 @@ const Hero = () => {
 
     try {
       setLoading(true);
-
-      const result = await axios.post("/api/generate-course-layout", {
+      await axios.post("/api/generate-course-layout", {
         userInput,
         type,
         aiProvider,
         slideModel,
-        courseId: courseId,
+        courseId,
       });
-      console.log(result.data);
-      setLoading(false);
       toast.success("Course layout generated succesfully!", { id: toastId });
-
-      //navigate to course editor page
-      router.push("/course/" + courseId);
+      router.push(`/course/${courseId}`);
     } catch (error) {
-      setLoading(false);
-
       const message =
         error instanceof AxiosError
           ? error.response?.data?.error || error.message
@@ -72,6 +62,8 @@ const Hero = () => {
 
       console.error("Failed to generate course layout:", error);
       toast.error(message, { id: toastId });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -90,15 +82,14 @@ const Hero = () => {
           <InputGroup>
             <InputGroupTextarea
               data-slot="input-group-control"
-              className="flex field-sizing-content min-h-24 w-full resize-none rounded-xl 
-              bg-white px-3 py-2.5 text-base transition-[color,box-shadow] outline-none md:text-sm"
+              className="flex field-sizing-content min-h-24 w-full resize-none rounded-xl bg-white px-3 py-2.5 text-base transition-[color,box-shadow] outline-none md:text-sm"
               placeholder="Autoresize textarea..."
               value={userInput}
               onChange={(e) => setUserInput(e.target.value)}
             />
             <InputGroupAddon align="block-end">
               <Select value={type} onValueChange={setType}>
-                <SelectTrigger className="">
+                <SelectTrigger>
                   <SelectValue placeholder="Full Course" />
                 </SelectTrigger>
                 <SelectContent>
@@ -110,22 +101,22 @@ const Hero = () => {
                   </SelectGroup>
                 </SelectContent>
               </Select>
+
               <Select value={aiProvider} onValueChange={setAiProvider}>
-                <SelectTrigger className="">
+                <SelectTrigger>
                   <SelectValue placeholder="Global AI" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
                     <SelectLabel>AI Backend</SelectLabel>
                     <SelectItem value="global-ai">Global AI</SelectItem>
-                    <SelectItem value="local-ai">
-                      Local AI (Ollama)
-                    </SelectItem>
+                    <SelectItem value="local-ai">Local AI (Ollama)</SelectItem>
                   </SelectGroup>
                 </SelectContent>
               </Select>
+
               <Select value={slideModel} onValueChange={setSlideModel}>
-                <SelectTrigger className="">
+                <SelectTrigger>
                   <SelectValue placeholder="Slide Model" />
                 </SelectTrigger>
                 <SelectContent>
@@ -137,9 +128,7 @@ const Hero = () => {
                     <SelectItem value="ollama:llama3.1:8b">
                       Ollama · Llama 3.1 8B
                     </SelectItem>
-                    <SelectItem value="kimi:kimi-k2.5">
-                      Kimi · K2.5
-                    </SelectItem>
+                    <SelectItem value="kimi:kimi-k2.5">Kimi · K2.5</SelectItem>
                     <SelectItem value="gemini:gemini-2.5-flash">
                       Gemini · 2.5 Flash
                     </SelectItem>
@@ -149,16 +138,13 @@ const Hero = () => {
                   </SelectGroup>
                 </SelectContent>
               </Select>
-              {/* JWT auth: show send button if logged in, redirect to sign-in otherwise */}
-              {/* Previously: <SignInButton mode="modal"> wrapped the button for guests */}
+
               <InputGroupButton
                 className="ml-auto"
                 size="icon-sm"
                 variant="default"
                 onClick={
-                  userDetail
-                    ? GenerateCourseLayout
-                    : () => router.push("/sign-in")
+                  userId ? generateCourseLayout : () => router.push("/sign-in")
                 }
                 disabled={loading}
               >
@@ -167,12 +153,13 @@ const Hero = () => {
             </InputGroupAddon>
           </InputGroup>
         </div>
+
         <div className="flex gap-5 mt-5 max-w-3xl flex-wrap justify-center z-10">
           {QUICK_VIDEO_SUGGESTIONS.map((suggestion, index) => (
             <h2
               className="border rounded-2xl px-2 p-1 cursor-pointer text-sm bg-white"
               key={index}
-              onClick={() => setUserInput(suggestion?.prompt)}
+              onClick={() => setUserInput(suggestion.prompt)}
             >
               {suggestion.title}
             </h2>
