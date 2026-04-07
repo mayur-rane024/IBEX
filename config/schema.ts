@@ -1,4 +1,5 @@
 import {
+  foreignKey,
   index,
   integer,
   json,
@@ -6,6 +7,7 @@ import {
   text,
   timestamp,
   uuid,
+  uniqueIndex,
   varchar,
 } from "drizzle-orm/pg-core";
 
@@ -129,10 +131,24 @@ export const forumRepliesTable = pgTable(
     createdAt: timestamp().defaultNow().notNull(),
   },
   (table) => ({
+    idThreadUniqueIdx: uniqueIndex("forum_replies_id_thread_id_idx").on(
+      table.id,
+      table.threadId,
+    ),
     threadIdIdx: index("forum_replies_thread_id_idx").on(table.threadId),
+    threadParentCreatedAtIdx: index("forum_replies_thread_parent_created_at_idx").on(
+      table.threadId,
+      table.parentReplyId,
+      table.createdAt,
+    ),
     parentReplyIdIdx: index("forum_replies_parent_reply_id_idx").on(
       table.parentReplyId,
     ),
     createdAtIdx: index("forum_replies_created_at_idx").on(table.createdAt),
+    parentReplyThreadFk: foreignKey({
+      columns: [table.parentReplyId, table.threadId],
+      foreignColumns: [table.id, table.threadId],
+      name: "forum_replies_parent_reply_thread_fk",
+    }).onDelete("cascade"),
   }),
 );

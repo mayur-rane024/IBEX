@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
+import { logServerError } from "@/lib/safe-error-log";
 import { ServiceError } from "@/lib/service-error";
 
 export const unauthorized = () =>
@@ -29,6 +30,6 @@ export const handleRouteError = (
     );
   }
 
-  console.error(fallbackMessage, error);
+  logServerError(fallbackMessage, error);
   return NextResponse.json({ error: fallbackMessage }, { status: 500 });
 };

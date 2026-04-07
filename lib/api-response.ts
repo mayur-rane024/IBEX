@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
+import { logServerError } from "@/lib/safe-error-log";
 import { ServiceError } from "@/lib/service-error";
 
 export const successResponse = (data: unknown, status = 200) =>
@@ -21,6 +22,6 @@ export const handleApiError = (
     return errorResponse(error.message, error.status);
   }
 
-  console.error(fallbackMessage, error);
+  logServerError(fallbackMessage, error);
   return errorResponse(fallbackMessage, 500);
 };

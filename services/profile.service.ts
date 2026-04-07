@@ -43,25 +43,21 @@ const buildAvatar = (pseudonym: string) =>
   `bottts-neutral:${pseudonym.toLowerCase()}`;
 
 const ensureUserRecord = async (userId: string) => {
-  const existingUser = await db
-    .select()
-    .from(usersTable)
-    .where(eq(usersTable.id, userId))
-    .limit(1);
-
-  if (existingUser[0]) {
-    return existingUser[0];
-  }
-
-  const [createdUser] = await db
+  await db
     .insert(usersTable)
     .values({
       id: userId,
       createdAt: new Date(),
     })
-    .returning();
+    .onConflictDoNothing({ target: usersTable.id });
 
-  return createdUser;
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(eq(usersTable.id, userId))
+    .limit(1);
+
+  return user;
 };
 
 export const ensureProfile = async (userId: string) => {
@@ -104,9 +100,39 @@ export const ensureProfile = async (userId: string) => {
       avatar,
       createdAt: new Date(),
     })
+    .onConflictDoNothing({ target: profilesTable.userId })
     .returning();
 
-  return createdProfile;
+  if (createdProfile) {
+    return createdProfile;
+  }
+
+  const [resolvedProfile] = await db
+    .select()
+    .from(profilesTable)
+    .where(eq(profilesTable.userId, userId))
+    .limit(1);
+
+  if (!resolvedProfile) {
+    throw new Error("Failed to resolve profile after creation");
+  }
+
+  if (resolvedProfile.pseudonym && resolvedProfile.avatar) {
+    return resolvedProfile;
+  }
+
+  const [updatedProfile] = await db
+    .update(profilesTable)
+    .set({
+      pseudonym: resolvedProfile.pseudonym || pseudonym,
+      avatar:
+        resolvedProfile.avatar ||
+        buildAvatar(resolvedProfile.pseudonym || pseudonym),
+    })
+    .where(eq(profilesTable.id, resolvedProfile.id))
+    .returning();
+
+  return updatedProfile;
 };
 
 export const getProfile = async (userId: string) => ensureProfile(userId);

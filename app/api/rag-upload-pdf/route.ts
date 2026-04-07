@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
-import pdfParse from "pdf-parse";
+import { PDFParse } from "pdf-parse";
 
 import { indexTopicRecords } from "@/lib/course-rag";
 import { unauthorized, handleRouteError } from "@/lib/route-errors";
@@ -39,8 +39,15 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const parsed = await pdfParse(buffer);
-    const text = (parsed.text || "").trim();
+    const parser = new PDFParse({ data: buffer });
+    let text = "";
+
+    try {
+      const parsed = await parser.getText();
+      text = (parsed.text || "").trim();
+    } finally {
+      await parser.destroy();
+    }
 
     if (!text) {
       return NextResponse.json(
@@ -61,18 +68,23 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    const namespace =
+      "namespace" in result && typeof result.namespace === "string"
+        ? result.namespace
+        : null;
+
     await createDocument({
       id: sourceId,
       userId,
       title: file.name,
       topicName,
-      namespace: "namespace" in result ? result.namespace : null,
+      namespace,
     });
 
     return NextResponse.json({
       success: true,
       indexed: result.indexed,
-      namespace: "namespace" in result ? result.namespace : null,
+      namespace,
       documentCount: "documentCount" in result ? result.documentCount : 0,
       message: result.indexed
         ? "PDF indexed successfully"
