@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { QUICK_VIDEO_SUGGESTIONS } from "@/data/constant";
+import { buildAuthUrl } from "@/lib/auth-role";
 
 const Hero = () => {
   const [userInput, setUserInput] = useState("");
@@ -144,7 +145,9 @@ const Hero = () => {
                 size="icon-sm"
                 variant="default"
                 onClick={
-                  userId ? generateCourseLayout : () => router.push("/sign-in")
+                  userId
+                    ? generateCourseLayout
+                    : () => router.push(buildAuthUrl("/sign-in", "user"))
                 }
                 disabled={loading}
               >

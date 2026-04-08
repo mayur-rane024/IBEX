@@ -13,6 +13,7 @@ import {
 
 export const usersTable = pgTable("users", {
   id: varchar({ length: 255 }).primaryKey(),
+  role: varchar({ length: 20 }).notNull().default("user"),
   createdAt: timestamp().defaultNow().notNull(),
 });
 

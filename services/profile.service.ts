@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 
-import { eq } from "drizzle-orm";
+import { currentUser } from "@clerk/nextjs/server";
+import { eq, sql } from "drizzle-orm";
 
 import { db } from "@/config/db";
 import { profilesTable, usersTable } from "@/config/schema";
+import { AppRole, DEFAULT_APP_ROLE, isAppRole } from "@/lib/auth-role";
 
 const ADJECTIVES = [
   "Curious",
@@ -42,14 +44,27 @@ const buildPseudonym = () => {
 const buildAvatar = (pseudonym: string) =>
   `bottts-neutral:${pseudonym.toLowerCase()}`;
 
-const ensureUserRecord = async (userId: string) => {
-  await db
-    .insert(usersTable)
-    .values({
-      id: userId,
-      createdAt: new Date(),
-    })
-    .onConflictDoNothing({ target: usersTable.id });
+let usersSchemaReady: Promise<void> | null = null;
+
+const ensureUsersSchema = async () => {
+  if (!usersSchemaReady) {
+    usersSchemaReady = db
+      .execute(sql`
+        ALTER TABLE "users"
+        ADD COLUMN IF NOT EXISTS "role" varchar(20) DEFAULT 'user' NOT NULL
+      `)
+      .then(() => undefined)
+      .catch((error) => {
+        usersSchemaReady = null;
+        throw error;
+      });
+  }
+
+  return usersSchemaReady;
+};
+
+const getUserRecord = async (userId: string) => {
+  await ensureUsersSchema();
 
   const [user] = await db
     .select()
@@ -57,7 +72,87 @@ const ensureUserRecord = async (userId: string) => {
     .where(eq(usersTable.id, userId))
     .limit(1);
 
-  return user;
+  return user ?? null;
+};
+
+const getClerkRole = async (userId: string): Promise<AppRole | null> => {
+  try {
+    const user = await currentUser();
+
+    if (!user || user.id !== userId) {
+      return null;
+    }
+
+    const role = user.unsafeMetadata?.role;
+
+    return isAppRole(role) ? role : null;
+  } catch {
+    return null;
+  }
+};
+
+const ensureUserRecord = async (userId: string, role?: AppRole) => {
+  await ensureUsersSchema();
+
+  const existingUser = await getUserRecord(userId);
+
+  if (role && existingUser?.role !== role) {
+    if (!existingUser) {
+      const [createdUser] = await db
+        .insert(usersTable)
+        .values({
+          id: userId,
+          role,
+          createdAt: new Date(),
+        })
+        .returning();
+
+      return createdUser;
+    }
+
+    const [updatedUser] = await db
+      .update(usersTable)
+      .set({
+        role,
+      })
+      .where(eq(usersTable.id, userId))
+      .returning();
+
+    return updatedUser;
+  }
+
+  if (existingUser && existingUser.role !== DEFAULT_APP_ROLE) {
+    return existingUser;
+  }
+
+  const clerkRole = await getClerkRole(userId);
+
+  if (existingUser) {
+    if (clerkRole && clerkRole !== existingUser.role) {
+      const [updatedUser] = await db
+        .update(usersTable)
+        .set({
+          role: clerkRole,
+        })
+        .where(eq(usersTable.id, userId))
+        .returning();
+
+      return updatedUser;
+    }
+
+    return existingUser;
+  }
+
+  await db
+    .insert(usersTable)
+    .values({
+      id: userId,
+      role: clerkRole ?? DEFAULT_APP_ROLE,
+      createdAt: new Date(),
+    })
+    .onConflictDoNothing({ target: usersTable.id });
+
+  return getUserRecord(userId);
 };
 
 export const ensureProfile = async (userId: string) => {
@@ -136,6 +231,8 @@ export const ensureProfile = async (userId: string) => {
 };
 
 export const getProfile = async (userId: string) => ensureProfile(userId);
+
+export const syncUserRecord = async (userId: string) => ensureUserRecord(userId);
 
 export const regenerateProfile = async (userId: string) => {
   const profile = await ensureProfile(userId);

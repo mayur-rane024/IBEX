@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 
 import Header from "@/app/_components/Header";
+import UserRecordSync from "@/app/_components/UserRecordSync";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
 
@@ -25,6 +26,7 @@ export default function RootLayout({
     <ClerkProvider>
       <html lang="en">
         <body className={`${inter.variable} font-sans`}>
+          <UserRecordSync />
           <div className="relative min-h-screen">
             <Header />
             {children}

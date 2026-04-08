@@ -2,12 +2,22 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Cpu, Database, Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Container } from "@/components/ui/container";
 import { Divider } from "@/components/ui/divider";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type CoursePreview = {
@@ -23,6 +33,60 @@ type CoursePreview = {
 
 const steps = ["Script", "Slides", "Video"];
 
+const typeOptions = [
+  {
+    value: "full-course",
+    label: "Full course",
+    description: "Builds a larger multi-chapter course outline.",
+  },
+  {
+    value: "quick-explain-video",
+    label: "Quick video",
+    description: "Keeps the generation shorter and more focused.",
+  },
+] as const;
+
+const providerOptions = [
+  {
+    value: "local-ai",
+    label: "Local Ollama",
+    description: "Uses your local model for course layout generation.",
+  },
+  {
+    value: "global-ai",
+    label: "Global AI",
+    description: "Uses configured cloud model keys for course layout generation.",
+  },
+] as const;
+
+const slideModelOptions = [
+  {
+    value: "ollama:mistral:latest",
+    label: "Ollama | Mistral Latest",
+    description: "Local slide generation with Mistral.",
+  },
+  {
+    value: "ollama:llama3.1:8b",
+    label: "Ollama | Llama 3.1 8B",
+    description: "Local slide generation with Llama 3.1.",
+  },
+  {
+    value: "kimi:kimi-k2.5",
+    label: "Kimi | K2.5",
+    description: "Cloud slide generation via Kimi.",
+  },
+  {
+    value: "gemini:gemini-2.5-flash",
+    label: "Gemini | 2.5 Flash",
+    description: "Cloud slide generation via Gemini.",
+  },
+  {
+    value: "openai:gpt-4o-mini",
+    label: "OpenAI | GPT-4o Mini",
+    description: "Cloud slide generation via OpenAI.",
+  },
+] as const;
+
 const formatDate = (value?: string) => {
   if (!value) return "Just now";
   return new Intl.DateTimeFormat("en-US", {
@@ -35,12 +99,28 @@ const formatDate = (value?: string) => {
 function GenerateWorkspace() {
   const router = useRouter();
   const [topic, setTopic] = useState("");
+  const [courseType, setCourseType] = useState<(typeof typeOptions)[number]["value"]>(
+    "full-course",
+  );
+  const [aiProvider, setAiProvider] = useState<
+    (typeof providerOptions)[number]["value"]
+  >("local-ai");
+  const [slideModel, setSlideModel] = useState<
+    (typeof slideModelOptions)[number]["value"]
+  >("ollama:mistral:latest");
   const [courses, setCourses] = useState<CoursePreview[]>([]);
   const [isLoadingCourses, setIsLoadingCourses] = useState(true);
   const [coursesError, setCoursesError] = useState<string | null>(null);
   const [generationError, setGenerationError] = useState<string | null>(null);
   const [activeStep, setActiveStep] = useState<number>(-1);
   const [isGenerating, setIsGenerating] = useState(false);
+
+  const selectedProvider = providerOptions.find(
+    (option) => option.value === aiProvider,
+  );
+  const selectedSlideModel = slideModelOptions.find(
+    (option) => option.value === slideModel,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -107,9 +187,9 @@ function GenerateWorkspace() {
         body: JSON.stringify({
           userInput,
           courseId,
-          type: "full-course",
-          aiProvider: "local-ai",
-          slideModel: "ollama:mistral:latest",
+          type: courseType,
+          aiProvider,
+          slideModel,
         }),
       });
 
@@ -169,6 +249,139 @@ function GenerateWorkspace() {
                   }
                 }}
               />
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Format
+                </label>
+                <Select
+                  value={courseType}
+                  onValueChange={(value) =>
+                    setCourseType(value as (typeof typeOptions)[number]["value"])
+                  }
+                >
+                  <SelectTrigger className="h-11 w-full rounded-xl bg-white">
+                    <SelectValue placeholder="Select format" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Course format</SelectLabel>
+                      {typeOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <p className="text-sm leading-6 text-slate-500">
+                  {
+                    typeOptions.find((option) => option.value === courseType)
+                      ?.description
+                  }
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Layout backend
+                </label>
+                <Select
+                  value={aiProvider}
+                  onValueChange={(value) =>
+                    setAiProvider(
+                      value as (typeof providerOptions)[number]["value"],
+                    )
+                  }
+                >
+                  <SelectTrigger className="h-11 w-full rounded-xl bg-white">
+                    <SelectValue placeholder="Select backend" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Layout generation</SelectLabel>
+                      {providerOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <p className="text-sm leading-6 text-slate-500">
+                  {selectedProvider?.description}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Slide model
+                </label>
+                <Select
+                  value={slideModel}
+                  onValueChange={(value) =>
+                    setSlideModel(
+                      value as (typeof slideModelOptions)[number]["value"],
+                    )
+                  }
+                >
+                  <SelectTrigger className="h-11 w-full rounded-xl bg-white">
+                    <SelectValue placeholder="Select model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Slide generation</SelectLabel>
+                      {slideModelOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <p className="text-sm leading-6 text-slate-500">
+                  {selectedSlideModel?.description}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid gap-3 rounded-2xl border border-border bg-slate-50 px-4 py-4 md:grid-cols-3">
+              <div className="flex items-start gap-3">
+                <Cpu className="mt-0.5 size-4 text-indigo-500" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-slate-800">
+                    Active layout backend
+                  </p>
+                  <p className="text-sm leading-6 text-slate-500">
+                    {selectedProvider?.label}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Sparkles className="mt-0.5 size-4 text-cyan-500" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-slate-800">
+                    Active slide model
+                  </p>
+                  <p className="text-sm leading-6 text-slate-500">
+                    {selectedSlideModel?.label}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Database className="mt-0.5 size-4 text-indigo-500" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-slate-800">
+                    RAG access
+                  </p>
+                  <p className="text-sm leading-6 text-slate-500">
+                    Use Topic Chat at the bottom-right to query topic memory or
+                    upload a PDF into vector storage.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="flex justify-center sm:justify-start">
