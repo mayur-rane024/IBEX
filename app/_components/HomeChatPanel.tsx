@@ -5,7 +5,6 @@ import axios from "axios";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { Bot, Cpu, Database, FileUp, Loader2, MessageCircleQuestion, Send } from "lucide-react";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
