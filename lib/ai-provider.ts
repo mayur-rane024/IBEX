@@ -7,6 +7,7 @@ type GenerateModelConfig = {
   provider?: string;
   model?: string;
   temperature?: number;
+  responseFormat?: "json" | "text";
 };
 
 type OllamaGenerateResponse = {
@@ -39,6 +40,7 @@ class OllamaTextModel {
       baseUrl: string;
       model: string;
       temperature: number;
+      responseFormat: "json" | "text";
     },
   ) {}
 
@@ -49,7 +51,7 @@ class OllamaTextModel {
         model: this.config.model,
         prompt,
         stream: false,
-        format: "json",
+        ...(this.config.responseFormat === "json" ? { format: "json" } : {}),
         options: {
           temperature: this.config.temperature,
         },
@@ -99,7 +101,9 @@ const createGeminiModel = (config?: GenerateModelConfig) => {
   return genAI.getGenerativeModel({
     model: config?.model || "gemini-2.5-flash",
     generationConfig: {
-      responseMimeType: "application/json",
+      ...(config?.responseFormat !== "text"
+        ? { responseMimeType: "application/json" }
+        : {}),
       temperature: config?.temperature ?? 0.3,
     },
   });
@@ -119,6 +123,7 @@ export const getGenerationModel = (config?: GenerateModelConfig) => {
       baseUrl: OLLAMA_BASE_URL,
       model: config?.model || OLLAMA_MODEL,
       temperature: config?.temperature ?? 0.3,
+      responseFormat: config?.responseFormat || "json",
     });
   }
 

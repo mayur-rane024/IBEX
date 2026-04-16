@@ -19,6 +19,19 @@ import {
   getMessages,
 } from "@/services/chat.service";
 
+type ChatHistoryMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+const buildConversationHistory = (messages: ChatHistoryMessage[]) =>
+  messages
+    .slice(-8)
+    .map((message) =>
+      `${message.role === "user" ? "User" : "Assistant"}: ${message.content}`,
+    )
+    .join("\n");
+
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
   if (!userId) return unauthorized();
@@ -66,13 +79,18 @@ export async function POST(req: NextRequest) {
     }
 
     const context = buildTopicContextFromMatches(ragResult.matches);
+    const conversationHistory = buildConversationHistory(
+      await getMessages(userId, conversation.id),
+    );
     const model = getGenerationModel({
       provider: "local-ai",
       temperature: 0.2,
       model: "mistral:latest",
+      responseFormat: "text",
     });
 
     const prompt = `You are a helpful tutor. Answer only using the context.
+Use the recent conversation only to understand follow-up intent; do not treat it as source material.
 If context is insufficient, explicitly say so.
 Keep answers concise and practical.
 Format your response exactly like this:
@@ -88,6 +106,9 @@ ${body.topicName}
 
 CONTEXT:
 ${context}
+
+RECENT CONVERSATION:
+${conversationHistory || "No previous messages."}
 
 QUESTION:
 ${body.question}
