@@ -3,6 +3,9 @@ export const runtime = "nodejs";
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { DOMMatrix, ImageData, Path2D } from "@napi-rs/canvas";
+import * as fs from "node:fs";
+import * as nodeModule from "node:module";
+import * as url from "node:url";
 
 import { indexTopicRecords } from "@/lib/course-rag";
 import { unauthorized, handleRouteError } from "@/lib/route-errors";
@@ -10,21 +13,34 @@ import { createDocument } from "@/services/document.service";
 
 type PdfParseModule = typeof import("pdf-parse");
 type PdfWorkerModule = typeof import("pdf-parse/worker");
-type ProcessWithBuiltinModule = NodeJS.Process & {
+type ProcessWithBuiltinModule = {
   getBuiltinModule?: (name: string) => unknown;
 };
 
-const ensurePdfNodeRuntime = async () => {
-  const processWithBuiltin = process as ProcessWithBuiltinModule;
+const nodeBuiltinModules: Record<string, unknown> = {
+  fs,
+  module: nodeModule,
+  url,
+};
 
-  if (processWithBuiltin.getBuiltinModule) {
+const ensurePdfNodeRuntime = () => {
+  const processWithBuiltin = process as unknown as ProcessWithBuiltinModule;
+
+  if (typeof processWithBuiltin.getBuiltinModule === "function") {
     return;
   }
 
   // pdfjs-dist expects Node >= 20.16. This keeps older local Node installs quiet.
-  const { createRequire } = await import("node:module");
-  const requireFromRoute = createRequire(import.meta.url);
-  processWithBuiltin.getBuiltinModule = (name: string) => requireFromRoute(name);
+  processWithBuiltin.getBuiltinModule = (name: string) => {
+    const moduleName = name.replace(/^node:/, "");
+    const builtinModule = nodeBuiltinModules[moduleName];
+
+    if (!builtinModule) {
+      throw new Error(`Unsupported builtin module requested: ${name}`);
+    }
+
+    return builtinModule;
+  };
 };
 
 const ensurePdfCanvasGlobals = () => {
@@ -36,7 +52,7 @@ const ensurePdfCanvasGlobals = () => {
 };
 
 const loadPdfParse = async () => {
-  await ensurePdfNodeRuntime();
+  ensurePdfNodeRuntime();
   ensurePdfCanvasGlobals();
   const [{ PDFParse }, { getData }] = await Promise.all([
     import("pdf-parse") as Promise<PdfParseModule>,

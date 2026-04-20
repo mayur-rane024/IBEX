@@ -277,7 +277,7 @@ function HomeChatPanel() {
       <Sheet open={open} onOpenChange={setOpen}>
         <SheetContent
           side="right"
-          className="flex h-screen w-full flex-col border-border bg-background p-0 sm:max-w-lg"
+          className="flex h-screen w-full flex-col gap-0 border-border bg-background p-0 sm:max-w-lg"
         >
           <SheetHeader className="shrink-0 border-b border-border bg-white px-5 py-4 pr-12">
             <SheetTitle className="flex items-center gap-2 text-xl text-slate-950">
